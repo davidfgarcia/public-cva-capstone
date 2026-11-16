@@ -1,0 +1,240 @@
+# ---------------------------------------------------------------------------
+# Compliance agent configuration
+# Paths are relative to `root`, the folder that contains `projects/` and
+# `reference/` (locally: .../Firm/compliance ; on AWS: the synced copy).
+# The reference rules workbook is NOT used at run time: it holds proprietary information and stays on the
+# computer it lives on. What the agent needs from it was extracted (see agent/reference.py).
+# `root` can also be given with --root or the COMPLIANCE_ROOT env variable.
+# ---------------------------------------------------------------------------
+root: ..                      # relative to this file
+projects_dir: Projects
+timezone: UTC                 # all timestamps are UTC, as yyyy-MM-dd-HH-mm-ss; timestamped files and folders are named yyyy-MM-dd-HH-mm-ss__<artifact_name>
+
+# Folders that are never treated as projects
+ignore_project_dirs: ["unused", "archive"]
+
+# ---------------------------------------------------------------- wage data
+wages:
+  kinds: [federal, state, union]           # <kind>_wages_data folders
+  current_file: current_wage_rates.xlsx    # only used to find tables in older folder layouts (now Wage rates/<Kind>.xlsx)
+  # Rows in a combined export are routed by wage decision: decisions like WA20250093 are federal,
+  # anything else (e.g. "L & I Prevailing Wages March 2026", "WA.State2025") is state.
+  federal_decision_regex: '^[A-Z]{2}\d{8}'
+  # Union rates: if a project has no union wage data of its own, use the union table extracted from
+  # the reference rules workbook ("WSCCA Wages" sheet) with `python run.py --extract-union-rates <workbook>`.
+  # false = report union rows as "no rate found" instead. Off since Nov 12, 2026 (David: only the rates the staff
+  # provided for the project); the Settings page can switch it on.
+  union_fallback: false
+  union_reference: reference/union_wages.xlsx
+  # Federal wage determinations listed under projects.<name>.federal_wage_determinations are downloaded from
+  # SAM.gov (as text) when the project doesn't have that modification yet. Needs outbound access to sam.gov.
+  # Off since Nov 12, 2026 (David: only the rates the staff provided); the Settings page can switch it on.
+  sam_gov:
+    enabled: false
+    base: https://sam.gov/api/prod/wdol/v1/wd
+    timeout_seconds: 60
+
+# ------------------------------------------------------------ payroll review
+payroll:
+  output_suffix: " - REVIEWED"
+  colors:
+    red: "FFFF4D4D"      # definitely wrong (breaks a rule taken from the reference rules workbook)
+    orange: "FFFFA726"   # possibly wrong (suspected issue)
+  # How a payroll row's "Jurisdiction" text maps to a wage-data kind (first match wins)
+  jurisdiction_patterns:
+    union: "union"
+    federal: "federal|davis|dba|hud"
+    state: "state|l&i|l & i|lni|wa "
+  # Each line's Jurisdiction also picks the wage determination: a decision number in it (e.g. "WA20250091")
+  # and/or a WA county name (e.g. "CLARK - UNION RATES - WA") narrow the rates to that determination/county.
+  # Map a Jurisdiction text explicitly here (all projects) or under projects.<name>.jurisdiction_map:
+  #   "Federal - XHA": {kind: federal, wage_decision: WA20250091, county: King}
+  jurisdiction_map: {}
+  # Payroll craft/classification names written differently from the wage determination. The payroll side matches
+  # lines whose craft and classification START with the text given (so names cut short in LCPtracker still match);
+  # the wage side must be a craft / classification in the project's wage data. kind (federal|state|union) is optional.
+  # Every name that wasn't an exact match, and how it was matched, is listed in the reviewed payroll's Comments sheet.
+  # Add entries here (all projects) or under projects.<name>.name_matches (one project; checked first).
+  #   - {payroll: "POWER EQUIPMENT OPERATORS- UND / (Pierce/Construction Equipment Oper",
+  #      wage: "Power Equipment Operators-Underground Sewer & Water / <L&I classification>", kind: state}
+  name_matches: []
+  # Federal lines whose Classification, Craft or Jurisdiction matches this (case-insensitive) are exempt from
+  # Davis-Bacon: their federal wage rate isn't checked (other checks still run). State lines are always checked.
+  # Empty = check every federal line.
+  federal_exempt_pattern: '\bexempt\b'
+  # Reference-workbook rules. severity: red | orange | off.  applies_to: list of kinds.
+  rules:
+    R01_over_10_st_day:   {severity: red, applies_to: [union, state, federal]}
+    R02_over_12_total_day: {severity: red, applies_to: [union, state, federal]}
+    R03_ot_rate_1_5x:     {severity: red, applies_to: [union, state, federal]}
+    R04_dt_rate_2x:       {severity: red, applies_to: [union, state, federal]}
+    R05_saturday_no_ot:   {severity: red, applies_to: [union]}    # CBA rule in the reference rules workbook
+    R06_sunday_no_dt:     {severity: red, applies_to: [union]}    # CBA rule in the reference rules workbook
+    R07_fringe_met:       {severity: red, applies_to: [union, state, federal]}
+    R08_base_met:         {severity: red, applies_to: [union, state, federal]}
+  # Suspected-issue checks (orange). Set to false to disable one.
+  suspect_checks:
+    S01_over_8_st_day: true
+    S02_rate_not_found: true
+    S03_hours_dont_add_up: true
+    S04_wages_dont_add_up: true
+    S05_over_40_week_no_ot: true
+    S06_payroll_rate_differs_from_wage_data: true
+    S07_gross_this_project_gt_all: true
+    S08_missing_or_negative: true
+    S09_duplicate_row: true
+    S10_fed_state_pair_mismatch: true
+    S11_rate_matched_approximately: true   # also lines matched on the classification name only, under another craft
+    S12_ot_below_published_ot_rate: true
+    S13_jurisdiction_wd_not_loaded: true
+    S14_determination_not_named: true      # Jurisdiction names no determination and the project has several
+    S15_unusable_value: true               # a value that isn't a usable number or date (only with upload_checks on)
+  # Upload checks (agent/upload_checks.py; item 1 of the reliability plan, #65; David, Nov 13, 2026). On: a payroll
+  # with no lines, or with its header row again below the lines (two exports in one file), is not checked and stays
+  # in Uploads, both emails say why; a line with a value the review can't use (text in a number column, a Week End
+  # Date that isn't a date or is out of range) is flagged S15 on that cell and left out of every other check, and
+  # the rest of the payroll is checked; the Audit sheet's "Values" row says so either way. Off: as before. On since
+  # Nov 15, 2026 (David), kept after a trial on two real projects (no S15, no skip, flags unchanged).
+  upload_checks:
+    enabled: true
+    future_days: 6            # a Week End Date more than this many days after the run's date is out of range
+    max_week_age_years: 5     # ... and one more than this many years before it
+  # Data gaps: what keeps payroll lines from being fully validated. Each is listed under "Data gaps" in the email and
+  # makes it a Failure: no wage data for a wage type the payroll uses, a Jurisdiction that names no determination
+  # when the project has several (S14), columns missing from the payroll, and lines with no wage rate (S02) from:
+  data_gaps:
+    no_rate_lines_percent: 1.0   # % of a payroll's lines (0 = any line with no wage rate is a data gap)
+  money_tolerance: 0.02     # $ per hour
+  fuzzy_match_threshold: 0.88
+
+# --------------------------------------------- intents & affidavits (WA L&I)
+intent:
+  # "auto": a project is checked when its tracker has Intent/Affidavit columns and its
+  # Project Info sheet does not say "No L&I Filing Required". Override per project below.
+  applicable: auto
+  socrata_base: https://data.wa.gov/resource
+  datasets:
+    intents: t9je-9qwa      # L&I Intent Project Details
+    affidavits: 9ncw-tqjn   # L&I Affidavit Project Details
+  app_token: ""             # optional Socrata app token (raises rate limits); or env SOCRATA_APP_TOKEN
+  # L&I publishes both datasets daily. When it hasn't for more than this many days (data.wa.gov's own "rows updated"
+  # date), or data.wa.gov can't be reached after a few retries, the intent/affidavit check is skipped in every
+  # project and both emails say why: anything filed since would look "not found" (David, Nov 8, 2026; L&I stopped
+  # on Oct 28). 0: only skip when data.wa.gov can't be reached.
+  lni_max_age_days: 3
+  # Where L&I's intent/affidavit records come from (David, Nov 10, 2026):
+  #   data.wa.gov  L&I's public datasets above (the default; they stopped updating on Oct 28, 2026)
+  #   live         L&I's own public lookup (secure.lni.wa.gov/wagelookup), always current. Not an official feed: L&I
+  #                may change it without notice. Checked with the probe and switched on Nov 10, 2026 (David); if
+  #                L&I changes it, check again:
+  #                  python -m agent.lni_live --probe <intent id> --project <L&I project id> --affidavit <affidavit id>
+  #                (field names and types only, never values). Only IDs, project, contractor, UBI, hiring company,
+  #                status and received date are kept. Back to data.wa.gov once L&I updates it again, if preferred.
+  lni_source: live
+  live:
+    pause_seconds: 0.25                 # between two requests
+    max_requests_per_project: 400       # more: that project isn't checked this run ("not readable")
+    max_seconds_per_project: 600        # longer: the same
+  # Field names are discovered automatically; set them here only if discovery picks the wrong one.
+  field_overrides: {}
+  # An Intent or Affidavit ID cell must start with a whole number that ends at the cell's end, a space or a separator
+  # (#175): true: "88000O8" or "8800040A" is "not a valid number" (one finding, naming the number L&I has, if any),
+  # "8800050-Filed" or "8800040 (amended)" is read by its number; false (as before): its leading digits are looked up
+  # (88000, 8800040). On since Nov 15, 2026 (David); narrowed after the trial, where "-Filed" on correct IDs was marked.
+  strict_ids: true
+  # Tracker lines with one of these statuses are not checked at all. Empty: pass-throughs file intents and
+  # affidavits too (their subcontractors file under them), so they are checked like any other line (David, Nov 5).
+  skip_statuses: []
+  # Lines whose contractor hasn't started work (also: a start date that says "Not started"/TBD or is in the future,
+  # or no status and no start date at all). With no intent in the tracker or at L&I they are counted in the Audit
+  # sheet, not marked: nothing is due before work starts (David, Nov 7, 2026).
+  not_started_statuses: ["not started"]
+  work_started_statuses: ["onsite", "completed work", "complete", "on site"]
+  completed_statuses: ["completed work", "complete"]
+  # L&I intents whose status contains one of these are not reported as missing from the tracker
+  lni_ignore_statuses: ["withdrawn", "cancel", "reject", "void", "denied", "rescind"]
+  name_mismatch_threshold: 0.35
+  review_log_sheet: "Review Log"
+  audit_sheet: "Audit"      # timestamped notes about the whole tracker (also an "Audit" sheet in each reviewed payroll)
+
+# Per-project overrides (folder name -> settings)
+projects:
+  # "Atrovan - ...":
+  #   federal_wage_determinations:       # downloaded from SAM.gov: the modification locked in at contract award
+  #     - {decision: WA20240001, mod: 4}  # (mod: latest = always the newest one)
+  #   county: Pierce                   # state lines whose Jurisdiction names no county use this county's rates
+  #                                    # (without it, such lines are flagged S13 when the rate differs by county)
+  #   state_rates_date: 2025-03-14     # bid due date: every state line uses the L&I rates in effect on that date
+  #                                    # (award date instead if the contract was awarded over 6 months after bids)
+  #   prefer_residential: true         # state lines use the residential classification of the same name when the
+  #                                    # rates have one ("Residential Carpenters"), the commercial one otherwise
+  # "QRX - Tramline":
+  #   lni_project_id: 123456         # set if the L&I project can't be found from the intent IDs
+
+# ------------------------------------------------------- AI review of orange flags (RAG/MMR; agent/ai_review.py)
+# Judgment-type orange flags are grouped into patterns, the evidence for each is found in the knowledge base
+# (public regulations downloaded automatically, documents in reference/knowledge/, staff decisions from the
+# reviewed payrolls' "Review decisions" sheet) and, in claude mode, Claude suggests keep / likely fine with
+# citations. A suggestion never changes a mark; staff decide in the Review decisions sheet.
+# Nothing to set before deploying: without an API key everything runs locally; on the AWS pipeline with the key in
+# Secrets Manager (compliance-agent/anthropic-api-key) it uses Claude, in shadow mode until shadow is set to false.
+ai_review:
+  enabled: auto            # auto (on) | false
+  mode: auto               # auto = claude on the AWS pipeline with ANTHROPIC_API_KEY, else local | local | claude
+  shadow: true             # true: suggestions kept out of view, only counted in the email (with staff agreement);
+                           # false: shown in the Review decisions sheet and in the flagged cells' notes
+  flags: [S01, S05, S11, S12, S13, S14]   # orange checks where the law or a contract decides (not arithmetic)
+  max_calls_per_run: 200   # Claude calls per run at most, all projects together (one per new or changed pattern)
+  max_seconds: 300         # time spent waiting for Claude per run at most (keeps a Lambda run within its 15 min)
+  cache_days: 90           # an answer is reused while its evidence is unchanged, for up to this many days
+  allow_untokenized: false # Claude only sees payrolls whose employee values are all tokens (true: also others)
+  thinking_effort: ""      # low | medium | high | max: adaptive thinking (the model reasons step by step, out of
+                           # sight, before its answer, as much as the effort level asks) on every call; "" = off.
+                           # Slower and more output tokens. Measure first: run.py --ai-experiment N (or trigger.sh
+                           # ... --ai-experiment N) compares answers without and with it on N patterns
+                           # (.agent/ai_thinking_experiment.json)
+  min_decisions_for_agreement: 10   # the email shows the agreement with staff from this many decisions
+  model: claude-sonnet-5-5
+  embedder: auto           # auto = local sentence-transformers if installed, else the built-in offline one | voyage
+                           # voyage = optional outside embeddings service (needs VOYAGE_API_KEY); not used: the
+                           # knowledge base (about 145 regulation sections plus staff documents and decisions) is
+                           # small enough for local search. Worth trying only if it grows to thousands of documents,
+                           # and then the free local embedding model first
+  reranker: auto           # auto = local cross-encoder with the local embedder, else the built-in one | claude
+  knowledge_dir: reference/knowledge   # .pdf/.txt/.md; folder names: regulations|guidance|contracts, federal|state|union, <project>
+  cache_dir: ~/.compliance_agent/ai_review   # downloaded regulations
+  refresh_days: 30         # how often the regulations are downloaded again
+  download_regulations: true   # 29 CFR Part 5 (ecfr.gov), RCW 39.12 and WAC 296-127 (app.leg.wa.gov)
+
+# ------------------------------------------------------- optional local LLM
+# Used only (1) to read a wage file the built-in parsers can't, and (2) to suggest the closest
+# wage classification when a payroll classification has no match (suggestion goes in an orange
+# comment; it never turns a cell red). Any OpenAI-compatible or Ollama server works.
+llm:
+  enabled: auto            # auto = use it only if the endpoint answers; true | false
+  provider: ollama         # ollama | openai_compatible
+  endpoint: http://localhost:11434
+  model: qwen3:8b           # 5.2 GB; qwen3:14b on a 24 GB GPU or a 32 GB Mac; qwen3:4b on small CPUs
+  think: false             # turn off Qwen3's "thinking" text so answers are plain JSON
+  timeout_seconds: 600     # CPU-only machines are slow; GPU / Apple silicon answer in seconds
+  check_dir: model_checks  # test set for `python run.py --check-model` (relative to this folder)
+  check_min_score: 0.95    # share of expected wage rows the model must get exactly right
+
+# ------------------------------------------------------------ structured run log
+# One JSON line per step of a run (run start and end, each task, each payroll upload, the AI review's counts and
+# tokens) in run_logs/<ts>__events.jsonl, under one run ID shared with the pipeline log and Sentry. Every field is
+# checked against a fixed schema, so no file name, path, cell text or worker data can get in (agent/events.py,
+# docs/run_log.md). On since Nov 14, 2026 (David), for a first look at real lines; false turns it off (nothing written).
+run_log:
+  events: true
+
+# ------------------------------------------------------------ error reporting
+# Errors are reported to Sentry, privacy first: only what failed and where in the code (error type and stack
+# trace), never message text, data or file contents (agent/errors.py). Runs on AWS and the hosted
+# web app report; the desktop app never does.
+# The SENTRY_DSN environment variable overrides the DSN below; SENTRY_DSN=off turns reporting off.
+error_reporting:
+  # Sentry project "compliance-agent" in the developer's account for now: replace it with the DSN of the
+  # firm's own Sentry project (Sentry > Settings > Projects > <project> > Client Keys) and deploy again.
+  sentry_dsn: 
+  environment: production

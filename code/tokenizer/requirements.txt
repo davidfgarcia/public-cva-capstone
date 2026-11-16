@@ -1,0 +1,7 @@
+# The job itself: Google APIs are called with the standard library (urllib), see pii_tokenizer/gcp.py.
+cryptography>=42
+PyYAML>=6
+sentry-sdk>=2.73,<3    # error reporting from the Cloud Run job (pii_tokenizer/errors.py)
+pypdf>=6,<7            # reading PDFs' text before one may go to AWS (pii_tokenizer/screen.py)
+# Tests only:
+openpyxl>=3.1

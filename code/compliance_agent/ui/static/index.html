@@ -1,0 +1,1457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Compliance Validation Agent</title>
+<link rel="icon" type="image/png" href="/brand/cva-demo-emblem-light.png">
+<style>
+/* One page for staff and the administrator, in three tabs: Add files (inputs), Run tasks, Results (outputs).
+   The same page serves the desktop app and the web app; server.py tells it which ("hosted"). */
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#1b1f1c; --muted:#5f6662; --line:#dde2dd; --line-strong:#c9cfca;
+  --accent:#2f5d50; --accent-hover:#264c41; --accent-ink:#ffffff; --soft:#eaf1ed; --row:#f7f9f7;
+  --warn:#7d4a00; --warn-bg:#fff1d6; --bad:#a3241c; --bad-bg:#fcebe9; --ok:#255d31; --ok-bg:#e4f1e7;
+  --info:#24506e; --info-bg:#e6f0f7; --code:#f0f2ef; --scrim:#00000066;
+  --r:12px; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#141615; --panel:#1d201e; --ink:#e8ebe8; --muted:#a0a7a2; --line:#2e3330; --line-strong:#3c423e;
+    --accent:#86c0ad; --accent-hover:#9ccfbe; --accent-ink:#0e1915; --soft:#21302a; --row:#202421;
+    --warn:#f0b45e; --warn-bg:#33291a; --bad:#f2938c; --bad-bg:#3a2321; --ok:#8fd19c; --ok-bg:#1f3123;
+    --info:#9cc8e8; --info-bg:#1c2a35; --code:#181a19; --scrim:#000000aa; color-scheme:dark }
+}
+:root[data-theme="dark"]{ --bg:#141615; --panel:#1d201e; --ink:#e8ebe8; --muted:#a0a7a2; --line:#2e3330; --line-strong:#3c423e;
+  --accent:#86c0ad; --accent-hover:#9ccfbe; --accent-ink:#0e1915; --soft:#21302a; --row:#202421;
+  --warn:#f0b45e; --warn-bg:#33291a; --bad:#f2938c; --bad-bg:#3a2321; --ok:#8fd19c; --ok-bg:#1f3123;
+  --info:#9cc8e8; --info-bg:#1c2a35; --code:#181a19; --scrim:#000000aa; color-scheme:dark }
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font)}
+.gutter{padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+
+/* header */
+header.top{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.topin{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+/* the company logo: the full lockup on wide screens, the emblem alone on phones; a light and a dark version */
+.logo{display:block;height:46px;width:auto;flex:none}
+.logo.emb{height:38px}
+.logo.dark,.logo.emb{display:none}
+.brand .rule{width:1px;align-self:stretch;margin:4px 0;background:var(--line-strong);flex:none}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .logo.full.light{display:none}
+  :root:not([data-theme="light"]) .logo.full.dark{display:block}
+}
+:root[data-theme="dark"] .logo.full.light{display:none}
+:root[data-theme="dark"] .logo.full.dark{display:block}
+@media (max-width:560px){
+  .logo.full,.brand .rule{display:none!important}
+  .logo.emb.light{display:block}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .logo.emb.light{display:none} :root:not([data-theme="light"]) .logo.emb.dark{display:block} }
+  :root[data-theme="dark"] .logo.emb.light{display:none} :root[data-theme="dark"] .logo.emb.dark{display:block}
+}
+.brand h1{font-size:16px;line-height:1.2;margin:0;font-weight:650}
+.brand .who{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brand>div{min-width:0}
+.topin .spacer{flex:1}
+.admin{display:flex;gap:8px;flex-wrap:wrap}
+
+main{max-width:1200px;margin:0 auto;padding-top:20px;padding-bottom:48px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){ .grid2{grid-template-columns:minmax(0,1fr)} }
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin-bottom:20px;min-width:0}
+.grid2 .card{margin-bottom:0}
+.grid2{margin-bottom:20px}
+.card>.head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.card h2{font-size:17px;line-height:1.3;margin:0;font-weight:650}
+.card h3{font-size:14px;margin:20px 0 8px;font-weight:650}
+.lede{color:var(--muted);font-size:14px;margin:0 0 14px}
+.count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:13px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+.hidden{display:none!important}
+
+/* controls */
+button,.btn{font:inherit;font-size:14px;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink);border-radius:8px;
+  padding:7px 14px;min-height:38px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:650;padding:9px 20px}
+button.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+button.primary.again{background:var(--warn);border-color:var(--warn);color:var(--panel)}
+button:disabled{opacity:.5;cursor:default}
+button.link{border:none;background:none;color:var(--accent);padding:4px 6px;min-height:0;font-weight:550}
+button.link:hover{text-decoration:underline}
+:is(button,input,summary,a):focus-visible,label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+input[type=text],input[type=search]{font:inherit;font-size:15px;padding:8px 11px;border:1px solid var(--line-strong);border-radius:8px;
+  background:var(--panel);color:var(--ink);min-width:0;min-height:38px}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer;margin:0;flex:none}
+label{cursor:pointer}
+
+/* banners */
+.banner{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:14px}
+.banner.warn{background:var(--warn-bg);color:var(--warn)} .banner.bad{background:var(--bad-bg);color:var(--bad)}
+.banner .spacer{flex:1}
+
+/* projects table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+thead th{background:var(--row);font-size:13px;font-weight:600;color:var(--muted)}
+#grid th.task,#grid td.task{text-align:center;width:180px}
+#grid th.task .t{color:var(--ink);display:block}
+/* "All": its box centred in the column like the boxes under it, the word below it */
+#grid th.task label.all{display:inline-flex;flex-direction:column;align-items:center;gap:2px;font-weight:400;font-size:11.5px;
+  margin-top:6px;padding:8px 8px 2px;border-radius:8px;line-height:1.1}
+#grid th.task label.all:hover{background:var(--soft)}
+#grid td.task label{display:inline-flex;padding:8px;border-radius:8px}
+#grid td.task label:hover{background:var(--soft)}
+#grid td.task.na label:hover{background:none}
+#grid td.task.na input{cursor:not-allowed}
+#grid td.task .na-note{display:block;font-size:11.5px;color:var(--muted);margin-top:-4px}
+#grid td.proj label.pn{display:inline-flex;align-items:center;gap:10px}
+#grid .name{font-weight:600}
+#grid tbody tr.on{background:var(--row)}
+.notes{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0 28px}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;line-height:1.5;padding:1px 9px;border-radius:999px;background:var(--code);color:var(--muted);white-space:nowrap}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.info{background:var(--info-bg);color:var(--info)}
+.grid-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.grid-tools input[type=search]{flex:1;min-width:180px;max-width:320px}
+.under{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:12px}
+details.add summary{color:var(--accent);font-weight:550;cursor:pointer;list-style:none;font-size:14px;padding:4px 0}
+details.add summary::-webkit-details-marker{display:none}
+details.add summary::before{content:"+ "}
+details.add[open] summary::before{content:"– "}
+details.add .row{margin-top:8px}
+#grid th.task .ts{display:none}
+@media (max-width:640px){
+  #grid th,#grid td{padding:10px 6px}
+  #grid th.task,#grid td.task{width:76px;min-width:0}
+  #grid th.task{font-size:12.5px}
+  #grid th.task .tl{display:none} #grid th.task .ts{display:block}
+  .notes{margin-left:0}
+  .card{padding:16px}
+}
+.skel{display:block;height:14px;border-radius:6px;background:linear-gradient(90deg,var(--code),var(--line),var(--code));background-size:200% 100%;animation:sh 1.2s infinite}
+@keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* add files */
+.drop{border:1.5px dashed var(--line-strong);border-radius:10px;padding:26px 16px;text-align:center;color:var(--muted);transition:.15s}
+.drop.over{border-color:var(--accent);background:var(--soft);color:var(--ink)}
+.drop .big{color:var(--ink);font-weight:550}
+.drop.off{opacity:.55}
+.uplog{list-style:none;margin:10px 0 0;padding:0;font-size:14px}
+.uplog li{display:flex;gap:8px;align-items:baseline;padding:3px 0}
+.uplog .ok{color:var(--ok)} .uplog .bad{color:var(--bad)}
+.files{list-style:none;margin:0;padding:0}
+.files li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)}
+.files li:last-child{border-bottom:none}
+.files .fn{flex:1 1 0;min-width:0;overflow-wrap:anywhere}
+.files .proj{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding-top:12px;border-bottom:none}
+
+/* tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-strong);margin:0 0 20px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs [role=tab]{border:none;border-bottom:3px solid transparent;border-radius:8px 8px 0 0;background:none;color:var(--muted);
+  font-size:15px;font-weight:600;padding:10px 16px 9px;min-height:44px;gap:8px;white-space:nowrap;margin-bottom:-1px}
+.tabs [role=tab]:hover{color:var(--ink);background:var(--soft)}
+.tabs [role=tab][aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.tbadge:empty{display:none}
+.tbadge{font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn)}
+.tbadge.busy{background:var(--info-bg);color:var(--info)}
+@media (max-width:480px){ .tabs [role=tab]{padding:10px 10px 9px;font-size:14px} }
+
+/* project picker (Add files) */
+.combo{position:relative;margin-bottom:10px}
+.combo input{width:100%}
+.listbox{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:8;list-style:none;margin:0;padding:4px;background:var(--panel);
+  border:1px solid var(--line-strong);border-radius:10px;box-shadow:0 8px 24px #0000002a;max-height:280px;overflow:auto}
+.listbox li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+.listbox li[aria-selected=true] .tick{visibility:visible}
+.listbox li.active{background:var(--soft)}
+.listbox li mark{background:none;color:inherit;font-weight:700}
+.listbox .tick{visibility:hidden;color:var(--accent);font-weight:700;width:14px}
+.listbox .none{color:var(--muted);cursor:default}
+.selected{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.selected:empty{display:none}
+.tag{display:inline-flex;align-items:center;gap:2px;font-size:13px;padding:2px 4px 2px 10px;border-radius:999px;background:var(--soft);
+  border:1px solid var(--accent);color:var(--ink)}
+.tag button{border:none;background:none;min-height:0;padding:0 6px;color:var(--muted);font-size:16px;line-height:1}
+.tag button:hover{color:var(--bad)}
+.plist{border:1px solid var(--line);border-radius:10px;max-height:340px;overflow:auto}
+.plist label{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:14px}
+.plist label:last-child{border-bottom:none}
+.plist label:hover{background:var(--row)}
+.plist label:has(input:checked){background:var(--soft)}
+.plist .nm{flex:1;min-width:0}
+.addto{font-size:14px;margin:-4px 0 12px;padding:10px 12px;border-radius:8px;background:var(--row)}
+.addto b{font-weight:650}
+
+/* expand / collapse */
+.card>.head:has(.fold){align-items:center}
+.fold{width:30px;height:30px;min-height:0;padding:0;border:1px solid var(--line-strong);border-radius:8px;justify-content:center;
+  color:var(--muted);flex:none;margin-left:-4px}
+.fold:hover{color:var(--ink)}
+.fold svg{transition:transform .15s}
+.fold[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.card.folded>.head{margin-bottom:0}
+
+/* run */
+.plan{list-style:none;margin:0 0 12px;padding:0}
+.plan li{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.plan li:last-child{border-bottom:none}
+.plan .who{font-weight:600}
+.empty{color:var(--muted);font-size:14px;padding:10px 0}
+.opts{display:flex;flex-direction:column;gap:10px;margin:6px 0 14px}
+.opts label{display:flex;gap:10px;align-items:flex-start;font-size:14px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden}
+.seg label{padding:7px 14px;border-right:1px solid var(--line-strong);font-size:14px;min-height:36px;display:flex;align-items:center}
+.seg label:last-child{border-right:none}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--soft);color:var(--accent);font-weight:650}
+.mode{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center}
+.mode .seg{justify-self:start}
+.mode #modeHint{grid-column:2}
+.mode.again .seg label:has(input:checked){background:var(--warn-bg);color:var(--warn)}
+@media (max-width:520px){ .mode{grid-template-columns:1fr} .mode #modeHint{grid-column:1} }
+.panel{border-radius:10px;padding:14px 16px;margin-top:14px;font-size:14px}
+.panel .title{font-weight:650;font-size:15px;display:flex;align-items:center;gap:8px}
+.panel p{margin:6px 0 0}
+.panel ul{margin:8px 0 0;padding:0;list-style:none}
+.panel ul li{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:3px 0}
+.panel .pill{background:var(--panel)}
+.panel.ok{background:var(--ok-bg)} .panel.ok .title{color:var(--ok)}
+.panel.bad{background:var(--bad-bg)} .panel.bad .title{color:var(--bad)}
+.panel.busy{background:var(--info-bg)} .panel.busy .title{color:var(--info)}
+.panel.wait{background:var(--code)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:rot .8s linear infinite;flex:none}
+@keyframes rot{to{transform:rotate(360deg)}}
+details.log{margin-top:12px}
+details.log summary{cursor:pointer;color:var(--muted);font-size:13px}
+details.log pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:12px/1.5 var(--mono);
+  max-height:280px;overflow:auto;white-space:pre-wrap;margin:8px 0 0;overflow-wrap:anywhere}
+.queue{list-style:none;margin:8px 0 0;padding:0}
+.queue li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.queue li:last-child{border-bottom:none}
+.queue .what{flex:1;min-width:180px}
+
+/* recent */
+#recent td{font-size:14px;padding:9px 14px}
+#recent td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:640px){                /* each check as a small block: when + result, then project and check */
+  #recent thead{display:none}
+  #recent tbody tr{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  #recent tbody tr:last-child{border-bottom:none}
+  #recent td{border:none;padding:0}
+  #recent td.c-when{grid-column:1;grid-row:1;color:var(--muted);font-size:13px}
+  #recent td.c-run{grid-column:2;grid-row:1;justify-self:end}
+  #recent td.c-find{grid-column:1 / span 2;grid-row:3;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  #recent td.c-what{grid-column:1;grid-row:2}
+  #recent td.c-proj{grid-column:1;grid-row:2}
+  #recent .c-took,#recent .c-who,#recent td.c-check{display:none}
+}
+#recent td.c-what{display:none}
+@media (max-width:640px){ #recent td.c-what{display:block} #recent td.c-proj{display:none} }
+
+#recent .note:empty,#recent .note:empty+.more{display:none}
+#recent .note{margin-top:3px;overflow-wrap:anywhere}
+/* a long note: two lines at most, "More" shows it all */
+#recent .note.clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+#recent .more{border:none;background:none;color:var(--accent);padding:0;min-height:0;font-size:12.5px;font-weight:550;margin-top:2px}
+#recent .more:hover{text-decoration:underline}
+/* features not available yet: visible, marked, and they open the Coming soon message */
+.soon-tag{display:inline-block;font-size:11px;font-weight:650;letter-spacing:.02em;padding:1px 7px;border-radius:999px;
+  background:var(--info-bg);color:var(--info);margin-left:8px;vertical-align:middle;white-space:nowrap}
+button.soon{opacity:.75}
+button.primary.soon{background:var(--muted);border-color:var(--muted);color:var(--panel)}
+button.primary.soon .soon-tag{background:var(--panel);color:var(--muted)}
+.drop.soon{border-style:dashed;opacity:.8}
+.soon-box{text-align:left}
+.soon-box .soon-icon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--info-bg);
+  color:var(--info);font-size:18px;margin-bottom:10px}
+.soon-box p{color:var(--muted);margin:6px 0 18px}
+/* under maintenance: amber instead of blue */
+.soon-tag[data-state="maintenance"],.soon-box .soon-icon[data-state="maintenance"]{background:var(--warn-bg);color:var(--warn)}
+/* dialogs, toast */
+dialog{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--ink);max-width:520px;width:92vw;padding:20px}
+dialog::backdrop{background:var(--scrim)}
+dialog h3{margin:0 0 8px;font-size:17px}
+dialog input[type=text]{width:100%}
+#panel-settings textarea{width:100%;max-width:560px;min-height:52px;font:inherit;font-size:13px}
+#panel-settings .setting{margin:0 0 14px} #panel-settings .hist{font-size:12px;max-height:180px;overflow:auto;padding-left:18px}
+.toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;max-width:90vw;font-size:14px;z-index:20}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+body.hosted .desk{display:none!important}
+</style>
+</head>
+<body>
+<header class="top"><div class="topin gutter">
+  <div class="brand">
+    <img class="logo full light" src="/brand/cva-demo-lockup-light.png" alt="CVA" width="158" height="46">
+    <img class="logo full dark" src="/brand/cva-demo-lockup-dark.png" alt="CVA" width="158" height="46">
+    <img class="logo emb light" src="/brand/cva-demo-emblem-light.png" alt="CVA" width="42" height="38">
+    <img class="logo emb dark" src="/brand/cva-demo-emblem-dark.png" alt="CVA" width="42" height="38">
+    <span class="rule" aria-hidden="true"></span>
+    <div><h1>Compliance Validation Agent</h1><div class="who" id="who">&nbsp;</div></div>
+  </div>
+  <span class="spacer"></span>
+  <div class="admin desk hidden" id="adminBtns">
+    <button id="btnFolder" type="button">Change folder</button>
+    <button id="btnSettings" type="button">Server settings</button>
+    <button id="btnQuit" type="button" title="Stop the app">Quit</button>
+  </div>
+</div></header>
+
+<main class="gutter">
+  <div class="banner bad hidden" id="offline" role="alert">
+    <span id="offlineMsg">Can't reach the Compliance Validation Agent right now.</span><span class="spacer"></span>
+    <button type="button" id="btnRetry">Try again</button>
+  </div>
+
+  <section class="card hidden" id="setup" aria-labelledby="setupTitle">
+    <div class="head"><h2 id="setupTitle">Compliance folder</h2></div>
+    <p class="lede" id="setupMsg"></p>
+    <div class="row"><input type="text" id="rootInput" style="flex:1" placeholder="/Users/you/Google Drive/Firm/compliance" aria-label="Compliance folder">
+      <button type="button" id="btnBrowse">Browse…</button><button type="button" id="btnCancelRoot" class="hidden">Cancel</button><button class="primary" type="button" id="btnSaveRoot">Use this folder</button></div>
+    <p class="small muted">The folder that contains <b>Projects</b>. If it is your Google Drive folder, files added here reach the server on the next sync.</p>
+  </section>
+
+  <div id="app">
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button type="button" role="tab" id="tab-files" aria-controls="panel-files" data-tab="files">Add files<span class="tbadge" id="badgeFiles"></span></button>
+      <button type="button" role="tab" id="tab-checks" aria-controls="panel-checks" data-tab="checks">Run tasks<span class="tbadge" id="badgeChecks"></span></button>
+      <button type="button" role="tab" id="tab-results" aria-controls="panel-results" data-tab="results">Results</button>
+      <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" data-tab="settings" hidden
+        title="For administrators">Settings</button>
+    </nav>
+
+    <!-- 1 Add files: the inputs -->
+    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" class="tabpanel">
+      <div class="grid2">
+        <section class="card" aria-labelledby="pickTitle">
+          <div class="head"><h2 id="pickTitle">Projects</h2><span class="count" id="pickCount"></span><span class="spacer"></span>
+            <span class="row" style="gap:8px"><button type="button" id="pickAll">Select all</button><button type="button" id="pickNone">Clear</button></span></div>
+          <p class="lede">Choose the projects the files belong to.</p>
+          <div class="combo" id="combo">
+            <input type="search" id="pickFind" placeholder="Find a project…" autocomplete="off" role="combobox"
+                   aria-expanded="false" aria-controls="pickList" aria-autocomplete="list" aria-label="Find a project to select">
+            <ul class="listbox hidden" id="pickList" role="listbox" aria-label="Matching projects" aria-multiselectable="true"></ul>
+          </div>
+          <div class="selected" id="pickChips" aria-live="polite"></div>
+          <div class="plist" id="pickAllList" role="group" aria-label="All projects"></div>
+          <div class="under"><details class="add" id="addProjectA">
+          <summary>Add a project</summary>
+          <div class="row">
+            <input type="text" class="newProject" placeholder="Project name, e.g. Brennick - 77Q" aria-label="New project name" style="flex:1;min-width:200px">
+            <button type="button" class="btnNewProject" data-feature="addProject">Add project</button>
+          </div>
+          <p class="small muted" style="margin:6px 0 0">Creates the project's Uploads, Payroll, Tracker and Files folders.</p>
+        </details></div>
+        </section>
+
+        <section class="card" aria-labelledby="filesTitle">
+          <div class="head"><h2 id="filesTitle">Add files</h2></div>
+          <p class="lede">Payroll exports, wage determinations and the compliance tracker. They go to each chosen project's Uploads folder and are processed at the next run.</p>
+          <div class="addto" id="addTo"></div>
+          <div class="drop" id="drop" data-feature="upload">
+            <div class="big" data-soon-tag>Drop files here</div>
+            <div class="small" style="margin-top:4px">or <button type="button" class="link" id="btnPick">choose files</button> · Excel, CSV, text or PDF</div>
+            <input type="file" id="fileInput" multiple class="hidden" accept=".xlsx,.xlsm,.csv,.txt,.pdf">
+          </div>
+          <ul class="uplog" id="uploadLog" aria-live="polite"></ul>
+          <div class="row hidden" id="nextRun" style="margin-top:12px"><span class="small muted">Files don't need to wait for Saturday:</span>
+            <button type="button" class="link" data-goto="checks">Run tasks now →</button></div>
+        </section>
+      </div>
+
+      <section class="card" id="waitCard" aria-labelledby="waitTitle">
+        <div class="head">
+          <button type="button" class="fold" id="waitToggle" aria-expanded="true" aria-controls="waitBody" aria-label="Collapse Not processed yet"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <h2 id="waitTitle">Not processed yet</h2><span class="count" id="waitCount"></span>
+        </div>
+        <div id="waitBody">
+          <p class="lede">Files in each project's Uploads folder. The next run processes them; remove one to keep it out.</p>
+          <ul class="files" id="pending"></ul>
+        </div>
+      </section>
+    </div>
+
+    <!-- 2 Run tasks -->
+    <div role="tabpanel" id="panel-checks" aria-labelledby="tab-checks" class="tabpanel" hidden>
+      <section class="card" aria-labelledby="projTitle">
+        <div class="head"><h2 id="projTitle">Projects and tasks</h2><span class="count" id="countLine"></span><span class="spacer"></span>
+          <span class="row" id="gridTools" style="gap:8px"><button type="button" id="selAll">Select all</button><button type="button" id="selNone">Clear</button></span></div>
+        <p class="lede">Tick the tasks to run for each project. Tick a project's name for all its tasks, or a column's box for every project.</p>
+        <div class="combo" id="findRow">
+          <input type="search" id="search" placeholder="Find a project…" autocomplete="off" role="combobox"
+                 aria-expanded="false" aria-controls="runList" aria-autocomplete="list" aria-label="Find a project to select">
+          <ul class="listbox hidden" id="runList" role="listbox" aria-label="Matching projects" aria-multiselectable="true"></ul>
+        </div>
+        <div class="tablewrap">
+          <table id="grid">
+            <thead><tr id="headRow"><th scope="col">Project</th></tr></thead>
+            <tbody id="rows">
+              <tr><td><span class="skel" style="width:60%"></span></td></tr>
+              <tr><td><span class="skel" style="width:45%"></span></td></tr>
+              <tr><td><span class="skel" style="width:52%"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="under"><details class="add" id="addProjectB">
+          <summary>Add a project</summary>
+          <div class="row">
+            <input type="text" class="newProject" placeholder="Project name, e.g. Brennick - 77Q" aria-label="New project name" style="flex:1;min-width:200px">
+            <button type="button" class="btnNewProject" data-feature="addProject">Add project</button>
+          </div>
+          <p class="small muted" style="margin:6px 0 0">Creates the project's Uploads, Payroll, Tracker and Files folders.</p>
+        </details></div>
+      </section>
+
+      <section class="card" aria-labelledby="runTitle">
+        <div class="head"><h2 id="runTitle">Run tasks</h2></div>
+        <p class="lede">All tasks run every Saturday at 2:00 a.m. by themselves. Run them now when new files shouldn't wait.</p>
+        <ul class="plan" id="plan"></ul>
+        <div class="empty" id="planEmpty">Nothing selected. Tick tasks in the list above.</div>
+        <div class="opts">
+          <div class="mode">
+            <span class="small muted" id="modeLabel">Action for the selected tasks:</span>
+            <span class="seg" role="radiogroup" aria-labelledby="modeLabel">
+              <label><input type="radio" name="mode" value="new" autocomplete="off" checked>Incremental</label>
+              <label><input type="radio" name="mode" value="all" autocomplete="off">Full rerun</label>
+            </span>
+            <div class="small muted" id="modeHint"></div>
+          </div>
+          <div class="row desk hidden" id="whereRow">
+            <span class="small muted">Run on:</span>
+            <span class="seg" role="radiogroup" aria-label="Where to run">
+              <label><input type="radio" name="where" value="local" checked>This computer</label>
+              <label><input type="radio" name="where" value="aws">Server</label>
+            </span>
+          </div>
+        </div>
+        <div class="row"><span class="spacer"></span><button class="primary" type="button" id="runBtn" data-feature="run" disabled>Run tasks</button></div>
+        <div id="runPanel" role="status" aria-live="polite"></div>
+        <ul class="queue hidden" id="queue"></ul>
+        <details class="log hidden" id="logBox"><summary>Details</summary><pre id="log"></pre></details>
+      </section>
+    </div>
+
+    <!-- 3 Results: the outputs -->
+    <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" class="tabpanel" hidden>
+      <section class="card" aria-labelledby="adminTitle">
+        <div class="head"><h2 id="adminTitle">Settings</h2></div>
+        <p class="lede" id="adminWho" aria-live="polite">Loading the settings…</p>
+        <div class="banner warn hidden" id="adminWarn"></div>
+        <div id="adminFields"></div>
+        <p class="small muted">Email lists: one address per line, on one of the firm's domains. Leave a list empty to use the
+          server's own setting. Changes apply from the next run; the people added or removed are told by email.
+          While the email service is still in its test mode (Amazon SES "sandbox"), a new address must first be
+          verified in AWS, or the emails to its list fail.</p>
+        <div class="banner bad hidden" id="adminErr" role="alert"></div>
+        <div class="row"><button class="primary" id="btnAdminSave" type="button" disabled>Save</button>
+          <span class="small muted" id="adminStatus" aria-live="polite"></span></div>
+        <details><summary class="small">Recent changes</summary><ul class="hist" id="adminHist"></ul></details>
+      </section>
+    </div>
+    <div role="tabpanel" id="panel-results" aria-labelledby="tab-results" class="tabpanel" hidden>
+      <section class="card" aria-labelledby="recentTitle">
+        <div class="head"><h2 id="recentTitle">Recent tasks</h2></div>
+        <p class="lede">From the weekly schedule and from this app, newest first, in your local time. <b>Run</b> says whether the task itself worked; <b>Findings</b> says whether the project passed. The full results are in the outcome email and in each project's Payroll and Tracker folders.</p>
+        <div class="tablewrap">
+          <table id="recent">
+            <thead><tr><th scope="col">When</th><th scope="col">Project</th><th scope="col">Task</th><th scope="col" title="Did the task itself work?">Run</th>
+              <th scope="col" title="Did the project pass?">Findings</th><th scope="col" class="c-took">Took</th><th scope="col" class="c-who">Started by</th></tr></thead>
+            <tbody id="recentRows"><tr><td colspan="7"><span class="skel" style="width:40%"></span></td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<dialog id="awsDlg">
+  <form method="dialog">
+    <h3>Server settings</h3>
+    <p class="small muted">For the administrator. Runs started here with "Server" use this AWS deployment and this computer's AWS sign-in (aws sso login). Fill in one.</p>
+    <p><label class="small">Lambda function name<br><input type="text" id="awsLambda"></label></p>
+    <p><label class="small">or EC2 instance ID<br><input type="text" id="awsEc2"></label></p>
+    <p><label class="small">Region<br><input type="text" id="awsRegion" placeholder="us-east-2"></label></p>
+    <div class="row" style="justify-content:flex-end"><button value="cancel">Cancel</button><button class="primary" id="btnSaveAws" value="default">Save</button></div>
+  </form>
+</dialog>
+<dialog id="confirmDlg">
+  <form method="dialog">
+    <p id="confirmMsg" style="margin-top:0"></p>
+    <div class="row" style="justify-content:flex-end"><button value="no">Cancel</button><button class="primary" value="yes" id="confirmYes">OK</button></div>
+  </form>
+</dialog>
+<dialog id="soonDlg" aria-labelledby="soonTitle">
+  <form method="dialog" class="soon-box">
+    <div class="soon-icon" id="soonIcon" aria-hidden="true">✦</div>
+    <h3 id="soonTitle">Coming soon</h3>
+    <p id="soonMsg"></p>
+    <div class="row" style="justify-content:flex-end"><button class="primary" value="ok" autofocus>Got it</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const API = window.COMPLIANCE_API_BASE || "";
+// ---- What staff can do from this page. Each action has a state:
+//   "on"           available
+//   "soon"         not built yet: marked "Coming soon", opens the Coming soon message
+//   "maintenance"  temporarily blocked (being fixed or rebuilt): marked "Unavailable", opens the maintenance message
+// A state can carry a note of its own, added to the message:
+//   upload: {state: "maintenance", note: "Uploads are back on Monday morning."}
+// Change a line here and deploy the web app.
+const FEATURES = {
+  run: "on",            // Run tasks (the button under the task list)
+  upload: "on",         // Add files: drop files or "choose files"
+  remove: "on",         // Remove an unprocessed file, or a run waiting in line
+  addProject: "on",     // Add a project (in Add files and in Run tasks)
+};
+// What each state looks like and says
+const STATES = {
+  soon: {tag: "Coming soon", icon: "✦", title: "Coming soon",
+         text: "This option isn't available just yet. We're preparing something useful here, so please watch this space."},
+  maintenance: {tag: "Unavailable", icon: "⚙", title: "Temporarily unavailable",
+                text: "We're making some improvements to this option, so it's unavailable for a short while. Please try again later. We apologize for the inconvenience."},
+};
+function featureState(name) {                 // -> {state, note}; anything unknown or missing counts as available
+  const v = FEATURES[name];
+  const s = typeof v === "object" && v ? v : {state: v === false ? "soon" : v === true ? "on" : v};
+  return {state: Object.hasOwn(STATES, s.state) ? s.state : "on", note: s.note || ""};
+}
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+// the same words as the staff email
+const CHECK = {payroll: "Payroll review", intent: "Intent/affidavit check", wages: "Wage updates"};
+// Run: did the task work? Findings: did the project pass? (agent/staff_email.py decides; the emails use the same words)
+const RUN = {"Completed": "ok", "Failed": "bad", "Skipped": "", "Not applicable": "", "Started": "info"};
+const FINDINGS = {"No issues": "ok", "Needs review": "warn", "Not checked": "", "Not applicable": ""};
+function verdicts(r) {
+  if (r.status === "started") return {run: "Started", findings: "Not known yet", note: ""};
+  if (r.run && r.findings) return {run: r.run, findings: r.findings, note: r.note || ""};
+  const old = {ok: ["Completed", "No issues"], warning: ["Completed", "Needs review"], failed: ["Failed", "Not checked"],
+               skipped: ["Skipped", "Not checked"]};
+  const [run, findings] = Object.hasOwn(old, r.status) ? old[r.status] : ["Not known yet", "Not known yet"];
+  return {run, findings, note: ""};
+}
+function vpill(map, word) { return `<span class="pill ${Object.hasOwn(map, word) ? map[word] : ""}">${esc(word)}</span>`; }
+const KIND = {payroll: "Payroll export", tracker: "Compliance tracker", wages: "Wage determination",
+              unknown: "Not recognized: it stays in Uploads and isn't checked"};
+const STORE_PLAN = "cva.plan", STORE_TO = "cva.uploadTo";
+
+let S = null;                 // the last /api/state
+let tasks = [], projects = [];
+let plan = new Map();         // project -> Set of task keys
+let uploadTo = new Set();
+let polling = null, since = 0, lastJob = null, queueTimer = null, busySending = false;
+let watchJob = null, shownJob = null;
+let pickCombo = null, runCombo = null;      // the two project search boxes (Add files, Run tasks)   // desktop: the run whose result this page shows, and the last one shown
+const reports = {};                       // desktop: run reports by job, for the problem lines of failed checks
+let choosingFolder = false;
+
+function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* not available */ } }
+function stored(k, d) { try { return JSON.parse(localStorage.getItem(k) || "null") ?? d; } catch (e) { return d; } }
+(function restore() {
+  for (const [p, ts] of Object.entries(stored(STORE_PLAN, {}))) plan.set(p, new Set(ts));
+  uploadTo = new Set(stored(STORE_TO, []));
+})();
+function savePlan() { store(STORE_PLAN, Object.fromEntries([...plan].map(([p, s]) => [p, [...s]]))); }
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 4000); }
+function ask(msg, yes = "OK") {
+  return new Promise((res) => { const d = $("confirmDlg"); $("confirmMsg").textContent = msg; $("confirmYes").textContent = yes;
+    d.returnValue = ""; d.onclose = () => res(d.returnValue === "yes"); d.showModal(); });
+}
+// Reusable: the message for an action that isn't available, and the check every action makes first.
+// unavailable("soon") or unavailable("maintenance", "Back on Monday.") can also be called directly.
+function unavailable(state = "soon", note = "") {
+  const s = STATES[state] || STATES.soon;
+  $("soonIcon").textContent = s.icon;
+  $("soonIcon").dataset.state = state;
+  $("soonTitle").textContent = s.title;
+  $("soonMsg").textContent = s.text + (note ? " " + note : "");
+  $("soonDlg").showModal();
+}
+function available(feature) {
+  const {state, note} = featureState(feature);
+  if (state === "on") return true;
+  unavailable(state, note);
+  return false;
+}
+// mark every control of a feature that isn't available yet (data-feature="..."); called after each render
+function markFeatures(root = document) {
+  root.querySelectorAll("[data-feature]").forEach((el) => {
+    const {state} = featureState(el.dataset.feature);
+    const off = state !== "on", label = off ? STATES[state].tag : "";
+    el.classList.toggle("soon", off);
+    el.dataset.state = state;
+    const holder = el.querySelector("[data-soon-tag]") || (el.tagName === "BUTTON" ? el : null);
+    let tag = holder && holder.querySelector(":scope > .soon-tag");
+    if (off && holder && !tag) {
+      tag = document.createElement("span"); tag.className = "soon-tag"; holder.appendChild(tag);
+    } else if (!off && tag) { tag.remove(); tag = null; }
+    if (tag) { tag.textContent = label; tag.dataset.state = state; }
+    if (off) el.setAttribute("aria-description", label); else el.removeAttribute("aria-description");
+  });
+}
+function plain(msg) { return String(msg || "").replace(/^ERROR:\s*/i, ""); }
+
+async function api(path, opts = {}) {
+  // the app's own header: a page elsewhere can't send it without the app's permission, which it never gives
+  opts = {...opts, headers: {...(opts.headers || {}), "X-Compliance-App": "1"}};
+  const r = await fetch(API + path, opts);
+  const j = await r.json().catch(() => ({error: r.statusText}));
+  if (!r.ok) throw new Error(j.error || r.statusText || "No answer");
+  return j;
+}
+const post = (p, body) => api(p, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+
+// ---------------------------------------------------------------- time
+function utc(ts) {                         // "2026-10-25-02-06-56" (UTC) -> Date
+  if (!ts) return null;
+  const [y, mo, d, h, mi, s] = ts.split("-").map(Number);
+  return new Date(Date.UTC(y, mo - 1, d, h, mi || 0, s || 0));
+}
+function when(ts) {
+  const dt = utc(ts); if (!dt || isNaN(dt)) return "";
+  const t = dt.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  const today = new Date().toDateString() === dt.toDateString();
+  const yest = new Date(Date.now() - 864e5).toDateString() === dt.toDateString();
+  return today ? `Today ${t}` : yest ? `Yesterday ${t}` : dt.toLocaleDateString([], {weekday: "short", month: "short", day: "numeric"}) + " " + t;
+}
+function took(s) {
+  if (s === null || s === undefined) return "–";
+  s = Math.max(1, Math.round(s));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`;
+}
+function who(trigger) {
+  const t = (trigger || "").toLowerCase();
+  if (t.includes("schedul")) return "Weekly schedule";
+  const m = /web app, ([^)@]+)/i.exec(trigger || "");
+  if (m) return m[1];
+  if (t.includes("desktop app")) return "Desktop app";
+  if (t.includes("aws") || t.includes("lambda") || t.includes("ec2")) return "Server";
+  return trigger ? trigger.replace(/^manual \(|\)$/g, "") : "";
+}
+const own = (o, k) => (Object.hasOwn(o, k) ? o[k] : undefined);      // server values are never taken as object keys blindly
+const checkName = (k) => (tasks.find((t) => t.key === k) || {}).label || own(CHECK, k) || k;
+
+// ---------------------------------------------------------------- load
+async function load(quiet) {
+  let s;
+  try { s = await api("/api/state"); }
+  catch (e) {
+    $("offlineMsg").textContent = S ? "Lost the connection to the Compliance Validation Agent. What you see may be out of date."
+                                    : "Can't reach the Compliance Validation Agent right now. Check your internet connection, then try again.";
+    $("offline").classList.remove("hidden");
+    if (!S) $("app").classList.add("hidden");         // nothing to work with yet: only the message and "Try again"
+    return false;
+  }
+  $("offline").classList.add("hidden");
+  S = s;
+  tasks = S.task_menu || [];
+  projects = (S.projects || []).map((p) => p.name);
+  const hosted = !!S.hosted;
+  document.body.classList.toggle("hosted", hosted);
+  $("adminBtns").classList.toggle("hidden", hosted);
+  $("tab-settings").hidden = !(hosted && S.admin);
+  if ($("tab-settings").hidden && !$("panel-settings").hidden) showTab("files");
+  else if (!$("tab-settings").hidden && WANT_TAB === "settings") { WANT_TAB = ""; showTab("settings"); }  // after a reload
+  $("who").textContent = hosted ? "Shared drive" + (S.user ? " · signed in as " + S.user : "")
+                                : (S.root ? "Folder: " + S.root : "No folder chosen");
+  $("who").title = hosted ? "" : (S.root || "");
+  const setup = (!!S.problem || choosingFolder) && !hosted;
+  $("setup").classList.toggle("hidden", !setup);
+  $("app").classList.toggle("hidden", setup);
+  $("btnCancelRoot").classList.toggle("hidden", !(choosingFolder && !S.problem));
+  if (setup) {                                         // keep what is being typed when the page refreshes
+    $("setupMsg").textContent = S.problem || "Choose the compliance folder (the one that contains Projects).";
+    if (document.activeElement !== $("rootInput") && !$("rootInput").dataset.edited) $("rootInput").value = S.root || "";
+    return true;
+  }
+  if (S.problem) { $("offlineMsg").textContent = S.problem; $("offline").classList.remove("hidden"); }
+  const awsReady = !!(S.aws && (S.aws.lambda_function || S.aws.ec2_instance_id));
+  $("whereRow").classList.toggle("hidden", hosted || !awsReady);
+  if (!awsReady) document.querySelector("input[name=where][value=local]").checked = true;
+  // forget choices for projects that no longer exist, and tasks no longer offered
+  const keys = new Set(tasks.map((t) => t.key));
+  for (const p of [...plan.keys()]) {
+    if (!projects.includes(p)) plan.delete(p);
+    else { const k = new Set([...plan.get(p)].filter((x) => keys.has(x) && offered(p, x))); k.size ? plan.set(p, k) : plan.delete(p); }
+  }
+  uploadTo = new Set([...uploadTo].filter((p) => projects.includes(p)));
+  if (!uploadTo.size && projects.length === 1) uploadTo.add(projects[0]);
+  ["addProjectA", "addProjectB"].forEach((id) => $(id).parentElement.classList.toggle("hidden", emptyLoad()));
+  render();
+  if (!quiet && S.run && S.run.status === "running" && !hosted) follow();
+  return true;
+}
+
+// ---------------------------------------------------------------- render
+function project(name) { return (S.projects || []).find((p) => p.name === name) || {}; }
+// the hosted app always has projects on the shared drive: an empty list means they didn't load (#73), so it says
+// so, and "Add a project" stays hidden until a list has loaded. The desktop app can really have none yet.
+const emptyLoad = () => !!(S && S.hosted) && !projects.length;
+function noProjectsText() {
+  return emptyLoad() ? "Couldn't load the projects. Reload the page; if they still don't appear, tell the administrator."
+                     : "No projects yet. Add the first one below.";
+}
+function waitingCount(p) { return Object.values(p.inbox || {}).reduce((a, l) => a + l.length, 0); }
+function has(p, k) { return plan.has(p) && plan.get(p).has(k); }
+// a task that doesn't apply to a project (the intent/affidavit check of a project whose tracker has no intent or
+// affidavit columns, say) is greyed out and never ticked: why, in a few words, or "" when it applies
+// a Closed or Not started project (its Project Data sheet's Status, #151 step 3) offers no task at all
+function inactive(p) { return String(project(p).inactive || ""); }
+function notOffered(p, k) { if (inactive(p)) return inactive(p); const u = project(p).unavailable || {}; return Object.hasOwn(u, k) ? String(u[k] || "Not applicable") : ""; }
+function offered(p, k) { return !notOffered(p, k); }
+function offeredTasks(p) { return tasks.filter((t) => offered(p, t.key)); }
+function setTask(p, k, on) {
+  if (on && !offered(p, k)) return;
+  const s = plan.get(p) || new Set(); on ? s.add(k) : s.delete(k); s.size ? plan.set(p, s) : plan.delete(p);
+}
+function tri(box, n, total) { box.checked = total > 0 && n === total; box.indeterminate = n > 0 && n < total; }
+function shown() { const q = $("search").value.trim().toLowerCase(); return projects.filter((p) => !q || p.toLowerCase().includes(q)); }
+
+function render() { renderGrid(); renderPicker(); renderPending(); renderPlan(); renderBadges(); markFeatures(); }
+
+function renderGrid() {
+  const vis = shown();
+  $("gridTools").classList.toggle("hidden", projects.length < 2);
+  $("findRow").classList.toggle("hidden", projects.length < 2);
+  const head = $("headRow");
+  head.querySelectorAll("th.task").forEach((th) => th.remove());
+  for (const t of tasks) {
+    const th = document.createElement("th");
+    th.className = "task"; th.scope = "col"; th.title = t.hint || "";
+    th.innerHTML = `<span class="t tl"></span><span class="t ts"></span><label class="all"><input type="checkbox"><span>All</span></label>`;
+    th.querySelector(".tl").textContent = t.label;
+    th.querySelector(".ts").textContent = t.label.split(" ")[0];      // phones: "Payroll", "Intent/affidavit"
+    const box = th.querySelector("input");
+    box.setAttribute("aria-label", `${t.label} for every project shown`);
+    const can = vis.filter((p) => offered(p, t.key));
+    tri(box, can.filter((p) => has(p, t.key)).length, can.length);
+    box.disabled = !can.length;
+    box.addEventListener("change", () => { vis.forEach((p) => setTask(p, t.key, box.checked)); changed(); });
+    head.appendChild(th);
+  }
+  const body = $("rows");
+  body.replaceChildren();
+  if (!vis.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="${tasks.length + 1}" class="muted"></td>`;
+    tr.firstChild.textContent = projects.length ? "No project matches." : noProjectsText();
+    body.appendChild(tr);
+  }
+  for (const name of vis) {
+    const p = project(name);
+    const tr = document.createElement("tr");
+    const n = tasks.filter((t) => has(name, t.key)).length;
+    tr.className = n ? "on" : "";
+    const td = document.createElement("td");
+    td.className = "proj";
+    const notes = [];
+    const w = waitingCount(p);
+    if (w) notes.push(`<span class="pill warn">${w} unprocessed ${w === 1 ? "file" : "files"}</span>`);
+    const rates = Object.entries(p.wages_in_use || {}).filter(([, v]) => v).map(([k]) => k);
+    notes.push(rates.length ? `<span class="pill" title="Wage rate tables this project has">Rates: ${esc(rates.join(", "))}</span>`
+                            : `<span class="pill warn" title="Upload the project's wage determinations: payroll lines can't be checked without rates">No wage rates yet</span>`);
+    if (!(p.tracker || []).length) notes.push(`<span class="pill" title="Put the project's compliance tracker in its Tracker folder, or add it here">No tracker</span>`);
+    if (inactive(name)) notes.push(`<span class="pill" title="Its Project Data sheet says ${esc(inactive(name))}: it isn't checked on Saturdays and its tasks can't be run. To check it, set its Status to Active: the change shows here the next morning, or after the next run.">${esc(inactive(name))}</span>`);
+    if (p.needs_migration) notes.push(`<span class="pill bad" title="The project's folders aren't in the expected layout (Uploads, Payroll, Tracker, Files), so tasks skip it. Ask the administrator.">Folders need fixing</span>`);
+    td.innerHTML = `<label class="pn"><input type="checkbox"><span class="name"></span></label>` +
+      (notes.length ? `<div class="notes">${notes.join("")}</div>` : "") +
+      `<button type="button" class="link small desk" data-open="${esc(name)}" style="margin-left:22px">Open folder</button>`;
+    td.querySelector(".name").textContent = name;
+    const all = td.querySelector("input");
+    all.setAttribute("aria-label", `All tasks for ${name}`);
+    tri(all, n, offeredTasks(name).length);
+    all.disabled = !offeredTasks(name).length;
+    all.addEventListener("change", () => { tasks.forEach((t) => setTask(name, t.key, all.checked)); changed(); });
+    tr.appendChild(td);
+    for (const t of tasks) {
+      const c = document.createElement("td");
+      c.className = "task";
+      const na = notOffered(name, t.key);
+      c.innerHTML = `<label><input type="checkbox"></label>`;
+      const box = c.querySelector("input");
+      box.checked = has(name, t.key);
+      box.setAttribute("aria-label", `${t.label} for ${name}` + (na ? (inactive(name) ? `: ${na} project` : `: not applicable (${na})`) : ""));
+      if (na) {
+        c.classList.add("na");
+        box.disabled = true;
+        c.title = inactive(name) ? `${na}: set the project's Status to Active on its Project Data sheet to check it` : `Not applicable: ${na}`;
+        const why = document.createElement("span");
+        why.className = "na-note";
+        why.textContent = inactive(name) || "Not applicable";
+        why.setAttribute("aria-hidden", "true");
+        c.appendChild(why);
+        c.addEventListener("click", () => toast(inactive(name) ? `${name} is ${na.toLowerCase()} on its Project Data sheet: set its Status to Active to check it`
+                                                               : `${t.label} · ${name}: not applicable (${na})`));   // phones: no hover
+      }
+      box.addEventListener("change", () => { setTask(name, t.key, box.checked); changed(); });
+      tr.appendChild(c);
+    }
+    body.appendChild(tr);
+  }
+  const nSel = projects.filter((p) => plan.has(p)).length;
+  $("countLine").textContent = `${projects.length} ${projects.length === 1 ? "project" : "projects"}` + (nSel ? ` · ${nSel} selected` : "");
+}
+
+// ---- Add files: which projects the files go to
+function setUploadTo(next) { uploadTo = new Set(projects.filter((p) => next.has(p))); store(STORE_TO, [...uploadTo]); renderPicker(); }
+function togglePick(name, on) { const s = new Set(uploadTo); (on ?? !s.has(name)) ? s.add(name) : s.delete(name); setUploadTo(s); }
+function renderPicker() {
+  // the full list
+  const box = $("pickAllList");
+  box.replaceChildren();
+  for (const name of projects) {
+    const l = document.createElement("label");
+    const w = waitingCount(project(name));
+    l.innerHTML = `<input type="checkbox"><span class="nm"></span>` + (w ? `<span class="pill warn">${w} unprocessed</span>` : "");
+    l.querySelector(".nm").textContent = name;
+    const c = l.querySelector("input");
+    c.checked = uploadTo.has(name);
+    c.addEventListener("change", () => togglePick(name, c.checked));
+    box.appendChild(l);
+  }
+  if (!projects.length) {
+    const e = document.createElement("div");
+    e.className = "empty"; e.style.padding = "12px"; e.textContent = noProjectsText();
+    box.appendChild(e);
+  }
+  // the chosen ones, removable
+  const chips = $("pickChips");
+  chips.replaceChildren();
+  for (const name of projects.filter((p) => uploadTo.has(p))) {
+    const s = document.createElement("span");
+    s.className = "tag";
+    s.innerHTML = `<span></span><button type="button">×</button>`;
+    s.firstChild.textContent = name;
+    s.lastChild.setAttribute("aria-label", `Unselect ${name}`);
+    s.lastChild.addEventListener("click", () => togglePick(name, false));
+    chips.appendChild(s);
+  }
+  const n = uploadTo.size;
+  $("pickCount").textContent = projects.length ? `${n} of ${projects.length} selected` : "";
+  $("pickAll").disabled = !projects.length || n === projects.length;
+  $("pickNone").disabled = !n;
+  $("combo").classList.toggle("hidden", projects.length < 2);
+  if (pickCombo) pickCombo.refresh();
+  // where the files go
+  $("drop").classList.toggle("off", !n);
+  const names = projects.filter((p) => uploadTo.has(p));
+  $("addTo").innerHTML = n ? `Files go to <b></b>` : `<span class="muted">Choose at least one project first.</span>`;
+  if (n) $("addTo").querySelector("b").textContent = n <= 3 ? names.join(", ") : `${n} projects`;
+}
+// a search box with a drop-down of matching projects (ARIA combobox); used by Add files and Run tasks
+function combo({input, list, prefix, isOn, toggle, onInput}) {
+  let idx = 0;
+  const inp = $(input), ul = $(list);
+  const matches = () => { const q = inp.value.trim().toLowerCase(); return projects.filter((p) => !q || p.toLowerCase().includes(q)); };
+  function render() {
+    const q = inp.value.trim(), ms = matches();
+    idx = Math.min(Math.max(idx, 0), Math.max(ms.length - 1, 0));
+    ul.replaceChildren();
+    if (!ms.length) { ul.innerHTML = `<li class="none" role="option" aria-disabled="true">No project matches.</li>`;
+                      inp.removeAttribute("aria-activedescendant"); return; }
+    ms.forEach((name, i) => {
+      const li = document.createElement("li");
+      li.id = `${prefix}-${i}`; li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", String(isOn(name)));
+      li.className = i === idx ? "active" : "";
+      li.innerHTML = `<span class="tick" aria-hidden="true">✓</span><span class="nm"></span>`;
+      const nm = li.querySelector(".nm"), at = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
+      if (at >= 0) { nm.append(name.slice(0, at)); const m = document.createElement("mark"); m.textContent = name.slice(at, at + q.length); nm.append(m, name.slice(at + q.length)); }
+      else nm.textContent = name;
+      li.addEventListener("mousedown", (e) => { e.preventDefault(); idx = i; toggle(name); render(); inp.focus(); });
+      ul.appendChild(li);
+    });
+    inp.setAttribute("aria-activedescendant", `${prefix}-${idx}`);
+  }
+  function open(on) {
+    ul.classList.toggle("hidden", !on);
+    inp.setAttribute("aria-expanded", String(on));
+    if (on) render(); else inp.removeAttribute("aria-activedescendant");
+  }
+  inp.addEventListener("input", () => { idx = 0; open(true); if (onInput) onInput(); });
+  inp.addEventListener("focus", () => open(true));
+  inp.addEventListener("blur", () => setTimeout(() => open(false), 120));
+  inp.addEventListener("keydown", (e) => {
+    const ms = matches();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); if (ul.classList.contains("hidden")) return open(true);
+      idx = (idx + (e.key === "ArrowDown" ? 1 : -1) + ms.length) % Math.max(ms.length, 1); render();
+      const a = $(`${prefix}-${idx}`); if (a) a.scrollIntoView({block: "nearest"});
+    } else if (e.key === "Enter") {
+      e.preventDefault(); if (ms[idx]) { toggle(ms[idx]); render(); }
+    } else if (e.key === "Escape") {
+      if (inp.value) { inp.value = ""; render(); if (onInput) onInput(); } else open(false);
+    }
+  });
+  return {refresh() { if (!ul.classList.contains("hidden")) render(); }};
+}
+
+function renderPending() {
+  const ul = $("pending");
+  ul.replaceChildren();
+  let any = 0;
+  for (const p of S.projects || []) {
+    const files = Object.entries(p.inbox || {}).flatMap(([k, fs]) => fs.map((f) => ({...f, kind: k})));
+    if (!files.length) continue;
+    any += files.length;
+    const h = document.createElement("li"); h.className = "proj"; h.textContent = p.name; ul.appendChild(h);
+    for (const f of files.sort((a, b) => a.name.localeCompare(b.name))) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="fn"></span><span class="pill ${f.kind === "unknown" ? "warn" : ""}"></span><button type="button" class="link small">Remove</button>`;
+      li.querySelector(".fn").textContent = f.name;
+      li.querySelector(".pill").textContent = f.kind === "unknown" ? "Not recognized" : (own(KIND, f.kind) || f.kind);
+      if (f.kind === "unknown") li.querySelector(".pill").title = KIND.unknown;
+      const b = li.querySelector("button");
+      b.setAttribute("aria-label", `Remove ${f.name} from ${p.name}`);
+      b.dataset.feature = "remove";
+      b.addEventListener("click", () => removeFile(p.name, f.kind, f.name));
+      ul.appendChild(li);
+    }
+  }
+  if (!any) ul.innerHTML = `<li class="empty" style="border:none;padding:4px 0">No unprocessed files. Files you add appear here until the next run processes them.</li>`;
+  const nProj = (S.projects || []).filter((p) => waitingCount(p)).length;
+  $("waitCount").textContent = any ? `${any} ${any === 1 ? "file" : "files"}` + (nProj > 1 ? ` in ${nProj} projects` : "") : "none";
+}
+
+function groups() {                        // projects that share the same tasks, shown together (one run either way)
+  const g = new Map();
+  for (const p of projects) {
+    if (!plan.has(p)) continue;
+    const ts = tasks.filter((t) => plan.get(p).has(t.key)).map((t) => t.key);
+    const key = ts.join("+");
+    if (!g.has(key)) g.set(key, {tasks: ts, projects: []});
+    g.get(key).projects.push(p);
+  }
+  return [...g.values()];
+}
+const MODE_HINT = {
+  new: "Payroll review checks new payroll files, and checks the last one again if wage rates changed. Wage updates add any new wage rates. The intent/affidavit check always compares the current tracker with the latest L&I records. The same as the Saturday run.",
+  all: "Payroll review also checks the latest payroll again even if nothing changed (for example, after the administrator changed a rule). Wage updates and the intent/affidavit check work as in Incremental. Takes longer."};
+const NO_PAYROLL = " No payroll review is selected, so this runs the same as Incremental.";
+function again() { return (document.querySelector("input[name=mode]:checked") || {}).value === "all"; }
+function renderMode() {
+  const payroll = groups().some((g) => g.tasks.includes("payroll"));
+  $("modeHint").textContent = again() ? MODE_HINT.all + (payroll ? "" : NO_PAYROLL) : MODE_HINT.new;
+  document.querySelector(".mode").classList.toggle("again", again());
+}
+function renderPlan() {
+  const gs = groups();
+  renderMode();
+  const ul = $("plan");
+  ul.replaceChildren();
+  for (const g of gs) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="what"></span> <span class="muted">for</span> <span class="who"></span>`;
+    li.querySelector(".what").textContent = g.tasks.map(checkName).join(" and ");
+    li.querySelector(".who").textContent = g.projects.join(", ");
+    ul.appendChild(li);
+  }
+  $("planEmpty").classList.toggle("hidden", gs.length > 0);
+  const n = gs.reduce((a, g) => a + g.projects.length * g.tasks.length, 0);
+  const queueing = !!polling && !(S && S.hosted);
+  $("runBtn").disabled = !gs.length || busySending;
+  const what = `${n} ${n === 1 ? "task" : "tasks"}`;
+  $("runBtn").textContent = busySending ? "Starting…" : !gs.length ? "Run tasks"
+    : queueing ? `Add ${what} to the queue` + (again() ? " · full rerun" : "")
+    : again() ? `Run ${what} · full rerun` : `Run ${what} · incremental`;
+  $("runBtn").classList.toggle("again", again() && !!gs.length);
+  markFeatures($("runBtn").parentElement);
+}
+function changed() { savePlan(); renderGrid(); renderPlan(); if (runCombo) runCombo.refresh(); }
+
+// ---------------------------------------------------------------- run
+function panel(kind, title, body, items) {
+  const el = $("runPanel");
+  setTimeout(renderBadges, 0);
+  if (!kind) { el.replaceChildren(); return; }
+  el.innerHTML = `<div class="panel ${kind}"><div class="title">${kind === "busy" ? '<span class="spin" aria-hidden="true"></span>' : ""}<span></span></div>` +
+    (body ? `<p></p>` : "") + (items && items.length ? `<ul></ul>` : "") + `</div>`;
+  el.querySelector(".title span:last-child").textContent = title;
+  if (body) el.querySelector("p").textContent = body;
+  if (items && items.length) el.querySelector("ul").innerHTML = items.join("");
+}
+function planLines(pairs) {
+  const by = new Map();
+  for (const x of pairs) { if (!by.has(x.project)) by.set(x.project, []); by.get(x.project).push(checkName(x.task)); }
+  return [...by].map(([p, ts]) => `${p}: ${ts.join(", ")}`);
+}
+function logLines(lines, reset) {
+  const pre = $("log");
+  if (reset) pre.textContent = "";
+  if (lines && lines.length) { pre.textContent += lines.join("\n") + "\n"; pre.scrollTop = pre.scrollHeight; }
+  $("logBox").classList.toggle("hidden", !pre.textContent.trim());
+}
+
+async function runNow() {
+  const gs = groups();
+  if (!gs.length || busySending) return;
+  if (!available("run")) return;
+  const hosted = !!(S && S.hosted);
+  const where = hosted ? "aws" : (document.querySelector("input[name=where]:checked") || {}).value || "local";
+  const pairs = gs.flatMap((g) => g.projects.flatMap((p) => g.tasks.map((t) => ({project: p, task: t}))));
+  const full = again();                                  // the action sent; the choice above stays as it is
+  const payload = {plan: gs.flatMap((g) => g.projects.map((p) => ({project: p, tasks: g.tasks}))), force: full, where};
+  busySending = true; renderPlan();
+  if (hosted || where === "aws")
+    panel("busy", "Sending the tasks to the Compliance Validation Agent…", "Checking that it started. This can take up to 15 seconds; if you leave, it still runs and the results arrive by email.");
+  else panel("busy", "Starting…");
+  try {
+    const r = await post("/api/run", payload);
+    if (hosted) {
+      // the web app sends the run within the request: the answer is the outcome
+      shownJob = r.job;
+      startedPanel(new Date(), pairs, full);
+    } else {
+      // the desktop app queues every run (on this computer or sent to the server) and reports when it ends
+      watchJob = r.job; submitted = queueAsked;
+      if (r.position > 1) panel("wait", `In line: number ${r.position - 1} · ${actionName(full)}`,
+        "Another run is still going. This one starts by itself when it finishes; you can leave this page open.");
+      else { since = 0; follow(); }
+    }
+  } catch (e) {
+    panel("bad", "The tasks weren't started", plain(e.message) || "Please try again in a minute.");
+  } finally {
+    busySending = false; renderPlan();
+    refreshQueue(); if (hosted) setTimeout(() => load(true), 1500);
+  }
+}
+// The action a run was started with, as the "Started" and "Running" titles say it ("Full rerun" or "Incremental").
+// The choice above is left as the user set it after a run (David and staff, Nov 14: a choice that changes by itself
+// reads as "my click was ignored"); the page opens on Incremental (autocomplete="off" on the radios: Firefox would
+// otherwise keep the choice over a reload), and the button says "· full rerun" while it is on.
+function actionName(full) { return full ? "Full rerun" : "Incremental"; }
+function startedPanel(at, pairs, full) {
+  const t = at.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  panel("ok", `✓ Started at ${t}` + (full === undefined ? "" : ` · ${actionName(full)}`),
+    "The Compliance Validation Agent is running them now. When it finishes, the results arrive by email and appear under Results › Recent tasks." +
+    (pairs.some((x) => x.task === "payroll") ? " Reviewed payrolls are saved in each project's Payroll folder." : ""),
+    planLines(pairs).map((l) => `<li>${esc(l)}</li>`));
+}
+
+// desktop app: follow the run that is going on this computer
+function follow() {
+  if (polling) return;
+  polling = setInterval(pollRun, 1200);
+  pollRun(); renderPlan();
+}
+async function pollRun() {
+  let r; try { r = await api("/api/run?since=" + since); } catch (e) { return; }
+  if (since === 0) logLines([], true);
+  since = r.next; logLines(r.lines);
+  const job = r.params && r.params.job;
+  if (r.status === "running") {
+    if (job && !watchJob) watchJob = job;              // a run already going when the page opened
+    if (job && watchJob !== job && shownJob !== watchJob) return;   // ours is still in line: keep its message
+    const started = utc(r.started);
+    const el = started ? took((Date.now() - started) / 1000) : "";
+    const what = r.params && r.params.pairs ? planLines(r.params.pairs) : [];
+    const aws = r.params && r.params.where === "aws";
+    const action = r.params && r.params.force !== undefined ? " · " + actionName(!!r.params.force) : "";
+    panel("busy", aws ? "Sending the tasks to the Compliance Validation Agent…" : `Running${action}${el ? " · " + el : ""}`,
+          aws ? (r.params.waits_for_run
+                   ? "This can take several minutes; if you leave, it still runs and the results arrive by email."
+                   : "Checking that it started. This can take up to 15 seconds; if you leave, it still runs and the results arrive by email.") : "You can keep working on this page; the results show here when it finishes.",
+          what.map((l) => `<li>${esc(l)}</li>`));
+  } else {
+    clearInterval(polling); polling = null; since = 0;
+    if (job) reports[job] = r.report;
+    await refreshQueue();
+    load(true);
+    renderPlan();
+  }
+}
+function showFinished(job) {
+  if (!job) return;
+  if (job.where === "aws") {                            // sent to the server: did it start?
+    if (job.outcome === "sent to AWS") startedPanel(utc(job.started) || new Date(), job.pairs || [],
+                                                    job.force === undefined ? undefined : !!job.force);
+    else panel("bad", "The tasks weren't started",
+               "The Compliance Validation Agent couldn't be reached or refused the run. Open Details to see why, then try again.");
+    return;
+  }
+  const rep = reports[job.id] || {};
+  const lines = (proj) => {                                // the run's own problem lines for a project, if any
+    const all = [].concat(...(rep.runs || [rep]).map((x) => ((x && x.projects) || {})[proj] || []));
+    return all.filter((l) => /^ERROR/.test(l)).slice(0, 2).map(plain);
+  };
+  const res = (job.results || []).map((x) => ({...x, v: verdicts(x)}));
+  const items = res.map((x) => {
+    const why = x.v.run === "Failed" ? lines(x.project) : [];
+    const note = x.v.note ? `<div class="small muted vnote" style="flex-basis:100%;padding-left:4px"></div>` : "";
+    return `<li>${vpill(RUN, x.v.run)} ${vpill(FINDINGS, x.v.findings)} <span class="who-what"></span>` + note +
+      why.map((w) => `<div class="small muted" style="flex-basis:100%;padding-left:4px">${esc(w)}</div>`).join("") + `</li>`;
+  });
+  const failed = res.some((x) => x.v.run === "Failed"), review = res.filter((x) => x.v.findings === "Needs review");
+  const payroll = res.some((x) => x.task === "payroll");
+  const title = failed ? "Finished: some tasks failed" : review.length ? `✓ Finished · ${review.length} to review` : "✓ Finished · no issues";
+  panel(failed ? "bad" : "ok", title,
+        (payroll ? "The reviewed payrolls are in each project's Payroll folder. " : "") +
+        "The details are in the outcome email" + (failed ? " and under Details below." : "."), items);
+  // names and notes as text, never as markup
+  $("runPanel").querySelectorAll("li").forEach((li, i) => {
+    li.querySelector(".who-what").textContent = `${res[i].project} · ${checkName(res[i].task)}`;
+    const n = li.querySelector(".vnote");
+    if (n) n.textContent = res[i].v.note;
+  });
+}
+
+// ---------------------------------------------------------------- queue and recent
+let queueAsked = 0, submitted = 0;          // an answer asked for before the last submit doesn't know that run yet
+async function refreshQueue() {
+  clearTimeout(queueTimer);
+  let q;
+  const asked = ++queueAsked;
+  try { q = await api("/api/queue"); }
+  catch (e) { queueTimer = setTimeout(refreshQueue, 10000); return; }
+  const hosted = !!(S && S.hosted);
+  const job = q.running ? q.running.id : null;
+  if (!hosted && job && job !== lastJob) {             // desktop: a run has started (ours from the line, or another one)
+    if (!watchJob || shownJob === watchJob) watchJob = job;
+    if (job === watchJob) { since = 0; follow(); }
+  }
+  lastJob = job;
+  let waitingForResult = false;
+  const known = new Set([q.running && q.running.id, ...(q.waiting || []).map((j) => j.id), ...(q.finished || []).map((j) => j.id)]);
+  if (!hosted && watchJob && shownJob !== watchJob && !known.has(watchJob) && !busySending && asked > submitted) {
+    watchJob = null; panel(null);                       // removed from the line elsewhere: nothing to wait for
+  }
+  if (!hosted && watchJob && shownJob !== watchJob) {
+    const f = (q.finished || []).find((j) => j.id === watchJob);
+    if (f) { showFinished(f); shownJob = watchJob; }
+    else waitingForResult = true;                      // not in the list yet: ask again soon
+  }
+  renderQueue(q);
+  renderRecent(q);
+  queueTimer = setTimeout(refreshQueue, (q.running || (q.waiting || []).length || waitingForResult) ? 2000 : 20000);
+}
+function renderQueue(q) {
+  const ul = $("queue");
+  ul.replaceChildren();
+  const waiting = (q.waiting || []);
+  for (const [i, j] of waiting.entries()) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="pill">In line #${i + 1}</span><span class="what"></span><button type="button" class="link small">Remove</button>`;
+    li.querySelector(".what").textContent = planLines(j.pairs).join(" · ") + (j.force ? " · Full rerun" : "");
+    const b = li.querySelector("button");
+    b.setAttribute("aria-label", "Remove from the line: " + planLines(j.pairs).join(", "));
+    b.dataset.feature = "remove";
+    b.addEventListener("click", async () => {
+      if (!available("remove")) return;
+      try {
+        await post("/api/queue/remove", {job: j.id});
+        if (j.id === watchJob) { watchJob = null; shownJob = null; panel(null); }   // ours: nothing left to wait for
+        refreshQueue();
+      } catch (e) { toast(plain(e.message)); }
+    });
+    ul.appendChild(li);
+  }
+  ul.classList.toggle("hidden", !waiting.length);
+  markFeatures(ul);
+}
+function fitNotes() {
+  document.querySelectorAll("#recent .note.clamp").forEach((n) => {
+    const more = n.nextElementSibling;
+    if (more) more.classList.toggle("hidden", !n.textContent || n.scrollHeight <= n.clientHeight + 1);
+  });
+}
+window.addEventListener("resize", () => { clearTimeout(fitNotes._t); fitNotes._t = setTimeout(fitNotes, 150); });
+function renderRecent(q) {
+  const rows = (q.recent || []).slice();
+  // runs this page sent to the server: shown as "Started" until the server's own result for it arrives
+  for (const j of q.finished || []) {
+    if (j.where !== "aws") continue;
+    for (const x of j.results || []) {
+      const done = rows.some((r) => r.project === x.project && r.task === x.task && (r.run_utc || "") >= (j.started || ""));
+      if (!done) rows.push({...x, run_utc: j.started, trigger: S && S.user ? `manual (web app, ${S.user})` : "manual (desktop app)",
+                            status: x.status === "ok" ? "started" : x.status, seconds: null});
+    }
+  }
+  rows.sort((a, b) => (b.run_utc || "").localeCompare(a.run_utc || ""));
+  const body = $("recentRows");
+  body.replaceChildren();
+  if (!rows.length) { body.innerHTML = `<tr><td colspan="7" class="muted">No tasks have run yet.</td></tr>`; return; }
+  for (const r of rows.slice(0, 30)) {
+    const v = verdicts(r);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="num c-when"></td><td class="c-proj"></td><td class="c-what"></td><td class="c-check"></td>` +
+      `<td class="c-run">${vpill(RUN, v.run)}</td><td class="c-find">${vpill(FINDINGS, v.findings)}` +
+      `<div class="note small muted clamp"></div><button type="button" class="more hidden" aria-expanded="false">More</button></td>` +
+      `<td class="num c-took"></td><td class="c-who muted"></td>`;
+    const c = tr.children;
+    c[0].textContent = when(r.run_utc); c[1].textContent = r.project; c[2].textContent = `${r.project} · ${checkName(r.task)}`;
+    c[3].textContent = checkName(r.task); c[5].querySelector(".note").textContent = v.note;
+    const more = c[5].querySelector(".more"), note = c[5].querySelector(".note");
+    more.setAttribute("aria-label", `Show all findings for ${r.project} · ${checkName(r.task)}`);
+    more.addEventListener("click", () => {
+      const open = note.classList.toggle("clamp") === false;
+      more.textContent = open ? "Less" : "More"; more.setAttribute("aria-expanded", String(open));
+    });
+    c[6].textContent = took(r.seconds); c[7].textContent = who(r.trigger);
+    body.appendChild(tr);
+  }
+  requestAnimationFrame(fitNotes);
+}
+
+// ---------------------------------------------------------------- files
+async function removeFile(proj, kind, name) {
+  if (!available("remove")) return;
+  if (!await ask(`Remove “${name}” from ${proj}? It moves to the project's archive (Files › Archived) and won't be checked. Nothing is deleted.`, "Remove")) return;
+  try { await post("/api/remove", {project: proj, kind, name}); toast(`Removed ${name}`); load(true); }
+  catch (e) { toast(plain(e.message)); }
+}
+async function upload(files) {
+  const to = projects.filter((p) => uploadTo.has(p));
+  if (!files.length) return;
+  if (!available("upload")) { $("fileInput").value = ""; return; }
+  if (!to.length) { toast("Choose the project the files belong to first"); $("pickFind").focus(); return; }
+  const out = $("uploadLog");
+  for (const f of files) for (const p of to) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="spin" aria-hidden="true"></span><span></span>`;
+    li.lastChild.textContent = `Adding ${f.name} to ${p}…`;
+    out.prepend(li);
+    try {
+      const r = await api(`/api/upload?project=${encodeURIComponent(p)}&kind=auto&name=${encodeURIComponent(f.name)}`, {method: "POST", body: await f.arrayBuffer()});
+      li.innerHTML = `<span class="ok" aria-hidden="true">✓</span><span></span>`;
+      li.lastChild.textContent = `${f.name} added to ${p}` + (r.note ? `. ${r.note.charAt(0).toUpperCase() + r.note.slice(1)}.` : "");
+    } catch (e) {
+      li.innerHTML = `<span class="bad" aria-hidden="true">✕</span><span></span>`;
+      li.lastChild.textContent = `${f.name} wasn't added to ${p}: ${plain(e.message)}`;
+    }
+  }
+  while (out.children.length > 8) out.lastChild.remove();
+  $("nextRun").classList.toggle("hidden", !out.querySelector(".ok"));
+  $("fileInput").value = "";
+  load(true);
+}
+
+// ---------------------------------------------------------------- expand / collapse
+function setFolded(card, button, body, name, folded) {
+  card.classList.toggle("folded", folded);
+  body.hidden = folded;
+  button.setAttribute("aria-expanded", String(!folded));
+  button.setAttribute("aria-label", (folded ? "Expand " : "Collapse ") + name);
+}
+(function foldable() {
+  const card = $("waitCard"), button = $("waitToggle"), body = $("waitBody"), name = "Not processed yet";
+  setFolded(card, button, body, name, !!stored("cva.fold.waiting", false));
+  button.addEventListener("click", () => {
+    const folded = button.getAttribute("aria-expanded") === "true";
+    setFolded(card, button, body, name, folded);
+    store("cva.fold.waiting", folded);
+  });
+})();
+
+// ---------------------------------------------------------------- events
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-open]");
+  if (t) post("/api/open", {project: t.dataset.open}).catch((err) => toast(plain(err.message)));
+});
+$("selAll").addEventListener("click", () => { shown().forEach((p) => tasks.forEach((t) => setTask(p, t.key, true))); changed(); });
+$("selNone").addEventListener("click", () => { shown().forEach((p) => plan.delete(p)); changed(); });
+$("runBtn").addEventListener("click", runNow);
+document.querySelectorAll("input[name=mode]").forEach((r) => r.addEventListener("change", () => { renderMode(); renderPlan(); }));
+renderMode();
+$("btnRetry").addEventListener("click", async () => { if (await load()) refreshQueue(); });
+document.querySelectorAll("details.add").forEach((d) => {
+  const input = d.querySelector(".newProject"), btn = d.querySelector(".btnNewProject");
+  btn.addEventListener("click", async () => {
+    if (!available("addProject")) return;
+    const name = input.value.trim(); if (!name) { input.focus(); return; }
+    try { await post("/api/projects", {name}); input.value = ""; d.open = false;
+          uploadTo = new Set([...uploadTo, name]); store(STORE_TO, [...uploadTo]); toast(`Project “${name}” added`); load(true); }
+    catch (e) { toast(plain(e.message)); }
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") btn.click(); });
+});
+// picker controls
+$("pickAll").addEventListener("click", () => setUploadTo(new Set(projects)));
+$("pickNone").addEventListener("click", () => setUploadTo(new Set()));
+pickCombo = combo({input: "pickFind", list: "pickList", prefix: "opt", isOn: (n) => uploadTo.has(n), toggle: (n) => togglePick(n)});
+// Run tasks: the same search; picking a project ticks all its tasks (or clears them), and typing narrows the list
+runCombo = combo({input: "search", list: "runList", prefix: "ropt", isOn: (n) => plan.has(n),
+  toggle: (n) => { plan.has(n) ? plan.delete(n) : tasks.forEach((t) => setTask(n, t.key, true)); changed(); },
+  onInput: () => { renderGrid(); renderPlan(); }});
+
+// ---------------------------------------------------------------- tabs
+const TABS = ["files", "checks", "results", "settings"];
+const shownTabs = () => TABS.filter((t) => !$("tab-" + t).hidden);
+function showTab(name, focus) {
+  if (!shownTabs().includes(name)) name = "files";
+  for (const t of TABS) {
+    const on = t === name;
+    $("tab-" + t).setAttribute("aria-selected", String(on));
+    $("tab-" + t).tabIndex = on ? 0 : -1;
+    $("panel-" + t).hidden = !on;
+  }
+  if (focus) $("tab-" + name).focus();
+  if (name === "results") requestAnimationFrame(fitNotes);      // notes can only be measured once shown
+  if (name === "settings") admLoad();
+  store("cva.tab", name);
+  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+}
+document.querySelectorAll("[role=tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("app").querySelector(".tabs").addEventListener("keydown", (e) => {
+  const T = shownTabs(), i = T.indexOf(document.activeElement.dataset.tab);
+  if (i < 0) return;
+  const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? T.length - 1 : null;
+  if (j === null) return;
+  e.preventDefault(); showTab(T[(j + T.length) % T.length], true);
+});
+document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { showTab(g.dataset.goto); window.scrollTo({top: 0}); } });
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+var WANT_TAB = location.hash.slice(1) || stored("cva.tab", "files");     // Settings: shown once the state says admin
+showTab(WANT_TAB);
+function renderBadges() {
+  const w = (S && S.projects || []).reduce((a, p) => a + waitingCount(p), 0);
+  $("badgeFiles").textContent = w ? String(w) : "";
+  $("badgeFiles").title = w ? `${w} unprocessed ${w === 1 ? "file" : "files"}` : "";
+  const busy = !!polling || $("runPanel").querySelector(".panel.busy");
+  $("badgeChecks").textContent = busy ? "running" : "";
+  $("badgeChecks").className = "tbadge busy";
+}
+
+const drop = $("drop");
+$("btnPick").addEventListener("click", () => { if (available("upload")) $("fileInput").click(); });
+$("fileInput").addEventListener("change", (e) => upload([...e.target.files]));
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => upload([...e.dataTransfer.files]));
+// web app, administrators only: the Settings page (#151)
+let ADM = null;
+function admRender(a) {
+  ADM = a;
+  const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  $("adminWho").textContent = a.changed_at ? `Last changed ${new Date(a.changed_at).toLocaleString()} by ${a.changed_by || "someone"}.`
+    : "Nothing set here yet: every setting has its value from the server.";
+  const bad = (a.invalid || []).length ? ` These can't be used: ${a.invalid.join(", ")}. Saving removes them (the server's own setting applies), unless you enter them again.` : "";
+  const warn = (a.unreadable ? "The settings file on the drive couldn't be read; saving writes a new one."
+    : a.edited_outside_page ? "The settings file was changed outside this page (in Drive). Check the values and save to confirm them." : "") + bad;
+  const both = admOverlap(a.settings);
+  const warn2 = warn + (both.length ? `${warn ? " " : ""}These Work started statuses also contain a Not started word: ${both.join(", ")}. A line with exactly one of them is checked as work started (an intent is due); other statuses with that word count as not started. Check this is what you want.` : "");
+  $("adminWarn").textContent = warn2; $("adminWarn").classList.toggle("hidden", !warn2);
+  $("adminErr").classList.add("hidden");
+  $("adminFields").innerHTML = a.settings.map((s) => {
+    const id = "adm_" + s.key.replace(/\W/g, "_");
+    const sv = s.server_value;
+    const svText = sv == null ? "" : Array.isArray(sv) ? (sv.join(", ") || "(none)")
+      : s.kind === "choice" ? ((s.choices || {})[sv] || sv) : String(sv);
+    const server = s.kind === "words" ? `<br><span class="small muted">Server's list (as of the web app's last update): ${esc(svText || "not known here")}. A list here replaces it whole; empty: the server's list; (none): no words.</span>` : "";
+    const help = (s.help ? `<br><span class="small muted">${esc(s.help)}</span>` : "") + server;
+    if (s.kind === "choice") {
+      const opts = [`<option value="">Server's setting${svText ? ": " + esc(svText) : ""}</option>`].concat(Object.entries(s.choices).map(([v, l]) =>
+        `<option value="${esc(v)}"${s.set && s.value === v ? " selected" : ""}>${esc(l)}</option>`));
+      return `<p class="setting"><label class="small">${esc(s.label)}${help}<br><select id="${id}">${opts.join("")}</select></label></p>`;
+    }
+    if (s.kind === "number") return `<p class="setting"><label class="small">${esc(s.label)}${help}<br><input id="${id}"
+      type="number" min="${s.min}" max="${s.max}" step="1" placeholder="Server's setting${svText ? ": " + esc(svText) : ""}" value="${s.set ? esc(s.value) : ""}"></label></p>`;
+    if (s.kind === "text") return `<p class="setting"><label class="small">${esc(s.label)}${help}<br><input id="${id}"
+      type="text" maxlength="${s.max}" placeholder="Server's setting" value="${s.set ? esc(s.value) : ""}"></label></p>`;
+    return `<p class="setting"><label class="small">${esc(s.label)}${help}<br><textarea id="${id}" spellcheck="false"
+      placeholder="Server's setting${s.kind === "words" ? " (one per line)" : ""}">${esc(s.set && s.kind === "words" && !(s.value || []).length ? "(none)" : (s.value || []).join("\n"))}</textarea></label></p>`;
+  }).join("");
+  $("adminHist").innerHTML = (a.history || []).map((h) => {
+    const label = (a.settings.find((s) => s.key === h.setting) || {}).label || h.setting;
+    const kind = (a.settings.find((s) => s.key === h.setting) || {}).kind;
+    const v = (x) => x == null ? "server's setting" : Array.isArray(x) ? (x.join(", ") || (kind === "emails" ? "nobody" : "(none)")) : String(x);
+    return `<li>${esc(new Date(h.at).toLocaleString())} · ${esc(h.by)} · ${esc(label)}: ${esc(v(h.old))} → ${esc(v(h.new))}</li>`;
+  }).join("") || "<li>None yet.</li>";
+}
+// a Work started status that contains a Not started word counts as not started (agent/intent.py _not_started)
+function admOverlap(settings) {
+  const eff = (key) => { const s = settings.find((x) => x.key === key) || {};
+    const v = s.set ? s.value : undefined; return (v === undefined || v === null ? s.server_value : v) || []; };
+  const re = (w) => new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}])`, "u");
+  const ns = eff("intent.not_started_statuses");
+  return eff("intent.work_started_statuses").filter((w) => ns.some((n) => re(n.toLowerCase()).test(w.toLowerCase())));
+}
+let admLoading = false;
+async function admLoad() {
+  if (admLoading) return;
+  admLoading = true;
+  $("btnAdminSave").disabled = true;
+  if (!ADM) $("adminWho").textContent = "Loading the settings…";
+  try { admRender(await api("/api/admin/settings")); $("btnAdminSave").disabled = false; $("adminStatus").textContent = ""; }
+  catch (e) { $("adminWho").textContent = plain(e.message); }
+  finally { admLoading = false; }
+}
+async function admSave() {
+  const changes = {};
+  for (const s of ADM.settings) {
+    const el = $("adm_" + s.key.replace(/\W/g, "_"));
+    let v;
+    if (s.kind === "choice") v = el.value || null;
+    else if (s.kind === "number") {
+      // unreadable input reads as "": never silently back to the server's value (review F7)
+      if (el.validity.badInput || (el.value.trim() !== "" && !/^[0-9]{1,3}$/.test(el.value.trim()))) {
+        $("adminErr").textContent = `${s.label}: a whole number from ${s.min} to ${s.max}, or empty for the server's setting.`;
+        $("adminErr").classList.remove("hidden"); return;
+      }
+      v = el.value.trim() === "" ? null : Number(el.value);
+    }
+    else if (s.kind === "text") v = el.value.trim() === "" ? null : el.value.trim();
+    else if (s.kind === "words") {
+      v = el.value.split("\n").map((w) => w.trim()).filter(Boolean);
+      if (!v.length) v = null;
+      else if (v.length === 1 && v[0].toLowerCase() === "(none)") v = [];       // no words, on purpose (review F6)
+    }
+    else { v = el.value.split(/[\s,;]+/).filter(Boolean); if (!v.length) v = null; }
+    const before = s.set ? s.value : null;
+    if (JSON.stringify(v) !== JSON.stringify(before)) changes[s.key] = v;
+  }
+  $("adminErr").classList.add("hidden");
+  const status = (t) => { $("adminStatus").textContent = t; };
+  if (!Object.keys(changes).length && !(ADM.invalid || []).length) { status("Nothing changed."); return; }
+  $("btnAdminSave").disabled = true;
+  status("Saving…");
+  try {
+    admRender(await post("/api/admin/settings", {base: ADM.rev || 0, changes}));
+    status(`Saved at ${new Date().toLocaleTimeString()}. The settings apply from the next run.`);
+  } catch (e) {
+    status("");
+    $("adminErr").textContent = plain(e.message); $("adminErr").classList.remove("hidden");
+  } finally { $("btnAdminSave").disabled = false; }
+}
+$("btnAdminSave").addEventListener("click", admSave);
+// desktop app only
+$("btnFolder").addEventListener("click", () => { choosingFolder = true; delete $("rootInput").dataset.edited; load(true); });
+$("btnCancelRoot").addEventListener("click", () => { choosingFolder = false; delete $("rootInput").dataset.edited; load(true); });
+$("rootInput").addEventListener("input", () => { $("rootInput").dataset.edited = "1"; });
+$("btnBrowse").addEventListener("click", async () => { try { const r = await post("/api/pick-folder"); $("rootInput").value = r.path; $("rootInput").dataset.edited = "1"; } catch (e) { toast(plain(e.message)); } });
+$("btnSaveRoot").addEventListener("click", async () => {
+  try { await post("/api/settings", {root: $("rootInput").value}); choosingFolder = false; delete $("rootInput").dataset.edited; await load(); refreshQueue(); }
+  catch (e) { toast(plain(e.message)); } });
+$("btnSettings").addEventListener("click", () => { const a = (S && S.aws) || {}; $("awsLambda").value = a.lambda_function || ""; $("awsEc2").value = a.ec2_instance_id || "";
+  $("awsRegion").value = a.region || ""; $("awsDlg").showModal(); });
+$("btnSaveAws").addEventListener("click", async () => { try { await post("/api/settings", {aws: {lambda_function: $("awsLambda").value, ec2_instance_id: $("awsEc2").value, region: $("awsRegion").value}}); load(true); } catch (e) { toast(plain(e.message)); } });
+$("btnQuit").addEventListener("click", async () => {
+  if (!await ask("Quit the app? A run in progress on this computer stops too.", "Quit")) return;
+  try { await post("/api/quit"); } catch (e) { /* it stopped */ }
+  document.body.innerHTML = "<p style='padding:24px'>The app has stopped. You can close this tab.</p>";
+});
+
+// desktop app: it quits by itself when no page has pinged it for a while (also while this tab is in the background)
+setInterval(() => { if (!(S && S.hosted)) fetch(API + "/api/ping").catch(() => {}); }, 30000);
+setInterval(() => { if (!document.hidden && S && !busySending) load(true); }, 60000);
+load().then((ok) => { if (ok) refreshQueue(); });
+</script>
+</body>
+</html>

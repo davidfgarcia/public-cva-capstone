@@ -1,0 +1,232 @@
+# Configuration for the Google-side tokenizer (see README.md).
+#
+# ${NAME} is replaced with the environment variable NAME, so folder IDs and bucket names can be set on the
+# Cloud Run job instead of in this file. Header patterns are matched against the WHOLE header after
+# normalising it: lower case, every run of punctuation/spaces turned into one space. "Employee ID (LCPtracker)"
+# becomes "employee id lcptracker".
+
+# ---------------------------------------------------------------------------------------------------------------
+# Columns that hold personal data.
+#   action: token -> replaced by a reversible token (restored when results come back)
+#   action: drop  -> emptied in the copy AWS sees; the original stays in Google Drive. Use for data no check needs
+#                    and that should not even be pseudonymised (a token for "Female" still reveals the category).
+#   scan_free_text: name  -> values are also searched for inside free text (notes, comments) as names: whole words,
+#                            any spacing, "Smith, John" also as "John Smith", only if 2+ words long
+#   scan_free_text: value -> values of 4+ characters are also searched for inside free text as whole words
+# ---------------------------------------------------------------------------------------------------------------
+fields:
+  employee_first_name:
+    prefix: EMP
+    action: token
+    part_of_name: first        # combined with the last name on the same line to find "John Smith" in free text
+    headers: ['(employee |worker )?first name.*', 'given name']
+  employee_middle_name:
+    prefix: EMP
+    action: token
+    headers: ['(employee |worker )?middle (name|initial).*']
+  employee_last_name:
+    prefix: EMP
+    action: token
+    part_of_name: last
+    headers: ['(employee |worker )?last name.*', 'surname', 'family name']
+  employee_name:
+    prefix: EMP
+    action: token
+    scan_free_text: name       # searched for inside free text, see free_text below
+    # 'employee name', 'emp name', "employee's name", 'worker name (last, first)', 'employee name / id', ...
+    headers: ['(employee|emp|worker|apprentice|journeyman|craft ?worker)s?\b.*\bname\b.*', 'employee',
+              'name', 'full name', 'name of (employee|worker)']
+  employee_id:
+    prefix: EID
+    action: token
+    scan_free_text: value      # IDs of 4+ characters are also replaced where they appear in free text
+    headers: ['(employee|emp|worker)s? ?(id|no|number|#).*', 'badge( no| number| #)?']
+  ssn:
+    prefix: SSN
+    action: token
+    scan_free_text: value
+    headers: ['.*\bssn\b.*', 'social security.*', 'ss ?#', 'last ?4( of)?( ssn| social.*)?', 'tax id.*', 'itin']
+  address:
+    prefix: ADR
+    action: token
+    headers: ['(employee |home |mailing |street |residential )?address( line)?( ?\d)?', 'street( address)?']
+  phone:
+    prefix: PHN
+    action: token
+    headers: ['(employee |home |cell |mobile )?(phone|telephone)( number| no| #)?']
+  email:
+    prefix: EML
+    action: token
+    headers: ['(employee )?e ?mail( address)?']
+  birth_date:
+    prefix: DOB
+    action: token
+    headers: ['date of birth', 'dob', 'birth ?date']
+  demographics:
+    action: drop
+    headers: ['gender', 'sex', 'ethnicity', 'race', 'race ethnicity', 'veteran.*', 'marital status', 'disability.*']
+  # Contractor names are business information and the L&I intent/affidavit checks match on them, so they are
+  # left as they are. To tokenize them anyway, uncomment (those checks will then stop matching):
+  # contractor_name:
+  #   prefix: CON
+  #   action: token
+  #   headers: ['contractor( name)?', 'hiring contractor', 'subcontractor( name)?']
+
+# Personal data found by its shape anywhere in a file (every text cell, notes, comments, CSV and text files).
+patterns:
+  ssn:   {prefix: SSN, regex: '\b\d{3}-\d{2}-\d{4}\b'}
+  email: {prefix: EML, regex: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'}
+  phone: {prefix: PHN, regex: '(?<![\d.])\(?\b\d{3}\)?[-. ]\d{3}[-. ]\d{4}\b(?![.\d])'}
+
+free_text:
+  min_name_words: 2           # names of fewer words are not searched for inside free text (see README)
+
+# ---------------------------------------------------------------------------------------------------------------
+# What happens to each kind of file on the way to AWS. Anything not listed is NOT copied (fail closed).
+# Every file copied also passes the checks in pii_tokenizer/screen.py (its name, and what is left after tokenizing);
+# a file that fails one is held back and listed in "Held back from AWS.csv" at the top of the staff folder.
+# ---------------------------------------------------------------------------------------------------------------
+files:
+  tokenize: ['.xlsx', '.xlsm', '.csv']      # Google Sheets are exported as .xlsx and tokenized too
+  scrub_text: ['.txt', '.md']               # patterns and known names replaced (.json is NOT copied: key names
+                                            # such as "last" or "ssn" are not understood). One exception, in the
+                                            # code: "CVA settings/cva_settings.json", the Settings page's file, is
+                                            # rebuilt from its checked values (cva_filekinds/settings_file.py)
+  scan_pdf: ['.pdf']                        # copied only if they pass the checks in pii_tokenizer/screen.py:
+                                            # readable text, used by the agent, no SSN or worker's name
+  # Macro-enabled workbooks are converted in the staff folder before anything else: a macro-free .xlsx is saved next
+  # to the original, and the original is moved to the project's Files/Archived/<time>/ (Tracker/Archived/<time>/ for a tracker) as "<name>.xlsm.uploaded", which Excel won't
+  # open by double-click and which is never copied to AWS. Remove the line to turn this off.
+  convert_macro_workbooks: ['.xlsm']
+  macro_archive_suffix: '.uploaded'
+
+# ---------------------------------------------------------------------------------------------------------------
+# Folder pairs. Each raw folder (the one staff use) is kept in step with a tokenized copy (the only one AWS can see).
+# ---------------------------------------------------------------------------------------------------------------
+mirrors:
+  - name: compliance
+    raw_folder_id: ${RAW_COMPLIANCE_FOLDER_ID}
+    tokenized_folder_id: ${TOKENIZED_COMPLIANCE_FOLDER_ID}
+
+# Change 1 (#93): each project's tracker is read from the staff's working folder (read only) and copied into
+# Projects/<project>/Tracker/ of this mirror's raw folder before it is tokenized (pii_tokenizer/staff_trackers.py).
+# Off while source_folder_id is empty. The tokenizer's account needs Viewer access to that drive, nothing more.
+staff_trackers:
+  mirror: compliance
+  source_folder_id: ${STAFF_TRACKERS_FOLDER_ID}
+  projects_dir: Projects
+
+# vNext settings (docs/vNext.md section 13). Each defaults to v1 behaviour; turn one on only with David's go-ahead.
+# On since Nov 13, 2026 (David): doubt_numbers, doubt_typed_cells, hold_unknown_csv, recheck_spreadsheets. Off until a
+# test run each: strict_wage_tables, strict_trackers (they can change marks or rates).
+vnext:
+  # #118: in a wage table, keep readable only what the agent's wage readers use: the agent's columns of rate rows (a
+  # Base/Basic or Total amount), each only with a value of its type (amounts, dates, decision codes, counties,
+  # Jurisdiction words), the agent's header cells; and no longer take a sheet out of doubt mode with the pre-#101 wage
+  # test. Everything else becomes a text token. Fails safe: a row without a rate, a rate typed with words, or a Trade
+  # or Classification computed by a formula reaches the agent as a token (not used); a wage-like sheet with hours or
+  # a personal-data column that isn't a payroll gives the agent no rates; a Jurisdiction, County, Decision or date
+  # written with words outside cva_filekinds/wage_table.py's lists (a union name not listed, "incl. vacation") reaches
+  # the agent as a token, so that rate is reported as having no Jurisdiction, or matched without its county.
+  # Since the privacy quick wins (Nov 13, 2026): text stored in a cell typed as a number, date or yes/no in such a
+  # sheet becomes a token too, as with doubt_typed_cells.
+  strict_wage_tables: false
+  # #128: in a tracker tab, the columns the intent/affidavit check reads keep a text readable only when it is a value of
+  # the column's type (cva_filekinds/tracker.py value_ok): Status only a word of tracker_status_words (below) or of the
+  # Settings page's tracker status lists, or (no digits) made only of their words and a few common ones ("Not started -
+  # awaiting NTP"); Intent/Affidavit Filed only yes/no words; IDs only what the agent reads as a number (a leading
+  # number, then punctuation, more numbers or a few ID words: "1234567 (amended)") or no/n/a; Start and End dates
+  # only dates and "not started" / TBD words. A formula is judged by its cached value, and not kept with quoted text.
+  # Anything else (a name typed into a Status, ID or date cell; text in a cell typed as a number or date) becomes a
+  # text token. Contractor and Hiring Contractor (business names) stay as before. What the agent then sees differently:
+  # a Status that isn't made of those words (it counts as an unknown status, as before, but "not started" can't be
+  # found in it), and an ID cell with other words after the number ("not a valid number" instead of the number).
+  strict_trackers: false
+  # #112: in a workbook in doubt mode, numbers and dates in cells the agent doesn't read become tokens too (a number
+  # comes back as the number on the staff side; a date typed t="d", which Excel doesn't write, comes back as text). A
+  # formula keeps its place: its text becomes a token when it has a number in it, its cached number a number token;
+  # charts' cached copies of their data are dropped (Excel rebuilds them). Cells of the agent's columns are left to
+  # the strict settings. Payroll exports and CSVs are not in doubt mode: not covered (phase 3).
+  doubt_numbers: true                 # on: David, Nov 13, 2026
+  # #124: in a workbook in doubt mode, a cell typed as a number, date, yes/no or error whose stored value is text (a
+  # hand-built or third-party file) becomes a text token, wherever the agent doesn't read it.
+  doubt_typed_cells: true                 # on: David, Nov 13, 2026
+  # #111: a .csv (or a tab-separated .txt table) that is neither a payroll export Uploads recognises, WA L&I's
+  # journey-level wages CSV, nor the agent's own L&I data (intents.csv / affidavits.csv in its "Files/L&I data/<run>/"
+  # or older lni_data folders) is held back (listed in Held back from AWS.csv), instead of crossing with only its
+  # recognised personal-data columns tokenized.
+  hold_unknown_csv: true                 # on: David, Nov 13, 2026
+  # #54: copies of spreadsheets and text files already on AWS are read again when names were learnt since (as PDFs
+  # are): one that now holds a worker's name is tokenized again from the staff file (at most a tenth of the copies per
+  # run; tried again next run if that fails), and its old content is listed for purging from S3 (_purge_on_aws.json,
+  # kind content). Shares the 10-minute re-check budget per pass with PDFs.
+  recheck_spreadsheets: true                 # on: David, Nov 13, 2026
+  # #53, "only known values pass": the three below close the name gap (a worker's name the tokenizer hasn't learnt
+  # yet reaching AWS as written). On since Nov 15, 2026 (David); each applies to a file the next time it is copied, except
+  # opaque_file_names, which renames the copies already on AWS at the next pass.
+  # Payroll exports and wage tables in doubt mode too (pii_tokenizer/doubt.py): a payroll keeps readable only the
+  # payroll reader's columns (cva_filekinds/payroll_export.py COLUMN_PATTERNS) on its header row and on its lines (a
+  # footer or a note below the table becomes a token), and in a reviewed payroll the Review decisions columns the agent
+  # reads; every other column, tab, note and text outside the table becomes a token (numbers too, with
+  # doubt_numbers). The same for a payroll CSV and WA L&I's wages CSV (their read columns only); the agent's merged
+  # wage tables keep their own columns; a wage-like sheet with hours or a personal-data column, or one only the
+  # pre-#101 test took for a wage table, is no longer taken out of doubt mode. What the agent then reads differently:
+  # nothing in the columns it uses; text it skipped anyway (footers, other tabs) arrives as tokens.
+  fail_closed_tables: true                 # on: David, Nov 15, 2026 (local trial on two projects first)
+  # A workbook's sheet names (and every reference to a sheet by name: formulas, defined names, charts, hyperlinks)
+  # and its document properties (title, author, last saved by, company, custom properties) keep readable only known
+  # words (cva_filekinds/names.py); each run of other words becomes a TXT- token. The agent's own sheet names (Audit,
+  # Review Log, Review decisions, Comments, Project Info...) are all known words, so it finds them as before.
+  opaque_sheet_names: true                 # on: David, Nov 15, 2026 (local trial on two projects first)
+  # File and folder names on the AWS side keep readable only known words (cva_filekinds/names.py: the agent's own
+  # folder and file words, the wage-file hints it reads, dates, short numbers, wage determination IDs); each run of
+  # other words becomes a FIL- token ("Ana Rivera timesheet 10-31.xlsx" -> "FIL-3f2a91c0d1 timesheet 10-31.xlsx").
+  # A project's own folder keeps its name, as before. Results come back to staff with the real words; the outcome
+  # emails, written on AWS, show "..." in their place and link to the staff's own file.
+  opaque_file_names: true                 # on: David, Nov 15, 2026 (local trial on two projects first)
+
+# Strict trackers (#128): tracker Status values kept readable, besides the Settings page's lists. Must include every
+# status word of the agent's config.yaml (intent.*_statuses; a test checks it). Letters, spaces and hyphens only; a
+# status that isn't one of these, nor made only of their words, reaches the agent as a text token.
+tracker_status_words: ["not started", "not yet started", "onsite", "on site", "completed work", "complete",
+                       "completed", "active", "closed", "in progress", "pending", "started", "done",
+                       "finished", "working", "mobilized", "demobilized", "hold", "on hold", "cancelled",
+                       "canceled", "withdrawn", "tbd", "n-a", "open", "scheduled", "awarded", "bidding",
+                       "work", "not", "yet"]
+
+# Paths (relative to a mirror's root) never copied to AWS, in addition to the file rules above.
+exclude:
+  # The agent's own bookkeeping, kept separately by each side that runs it (AWS keeps its copy in the tokenized
+  # folder, the desktop app in the staff folder). Never copied either way: it was never sent to AWS (.json is not
+  # in the file rules), and AWS's copy coming back only made '... (2).json' duplicates in the staff folder.
+  - '**/.agent_state.json'
+  - '**/.agent/**'
+  - 'private_reference/**'
+  - 'compliance_agent/**'
+  - '**/WageWorkbook*'
+  - '**/~$*'
+  - '**/.DS_Store'
+  - '**/*.tmp'
+  # Never part of the agent's work, so never copied to AWS (a full AWS run pulls the whole tokenized copy):
+  # tmp/ holds staff backups and scratch copies of projects, and folders in Projects/ whose names start with "_"
+  # (templates, previous versions, exports) are ignored by the agent as projects.
+  - 'tmp/*'
+  - 'Projects/_*'
+  # Change 1 (#93): which staff file is a project's tracker; read on the Google side only, never copied to AWS
+  - '**/tracker_source.txt'
+
+# Where the vault and the mirror state are kept (a private bucket in the wage-checks Google Cloud project).
+state_bucket: ${STATE_BUCKET}
+# Secret Manager secret holding the key (base64 or hex, at least 32 bytes).
+key_secret: ${KEY_SECRET}
+
+# ------------------------------------------------------------ error reporting
+# Errors are reported to Sentry, privacy first: only what failed and where in the code (error type and stack
+# trace), never message text, data or file contents (pii_tokenizer/errors.py). Only the Cloud Run job reports
+# (not tokenize/detokenize on a computer).
+# The SENTRY_DSN environment variable overrides the DSN below; SENTRY_DSN=off turns reporting off.
+error_reporting:
+  # Sentry project "compliance-agent" in the developer's account for now: replace it with the DSN of the
+  # firm's own Sentry project (Sentry > Settings > Projects > <project> > Client Keys) and deploy again.
+  sentry_dsn: 
+  environment: production

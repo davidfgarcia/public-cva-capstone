@@ -1,0 +1,12 @@
+# Upper bounds keep automatic monthly updates (deploy/auto_update.sh, Lambda image rebuild) within the same major
+# versions, so bug and security fixes arrive without breaking changes.
+openpyxl>=3.1,<4
+PyYAML>=6.0,<7
+requests>=2.31,<3
+lxml>=5.0,<7
+tzdata>=2024.1
+pdfplumber>=0.11,<1  # optional: only used when a wage determination arrives as PDF without a .txt twin
+cryptography>=42,<47  # deploy/tokenizer_trigger.py (signs in to Google to run the tokenizer)
+boto3>=1.34,<2       # AWS Lambda pipeline, Secrets Manager and the app's "Run on AWS"
+anthropic>=0.60,<2     # AI review's Claude mode (only used with an API key on the AWS pipeline)
+sentry-sdk>=2.73,<3    # error reporting on AWS and in the web app (agent/errors.py); off on the desktop
