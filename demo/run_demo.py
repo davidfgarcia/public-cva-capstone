@@ -111,6 +111,7 @@ def main(argv=None) -> int:
                              str(demo / "config.yaml")], cwd=AGENT, env=env)
 
     def stop(*_):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)      # once: the clean-up below must not be interrupted
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop)             # check_demo.py stops the demo this way: the UI goes with it
@@ -124,6 +125,8 @@ def main(argv=None) -> int:
             proc.kill()
         return 0
     finally:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         lookup.stop()
 
 

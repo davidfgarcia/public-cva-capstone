@@ -7,14 +7,19 @@ mode, which sends tokenized patterns to the Claude API).
 
 ## 1. Set up (once)
 
-You need Python 3.12 or newer and git. On a Mac (Terminal):
+You need Python 3.10 or newer (3.12 recommended) and git. On a Mac (Terminal):
 
 ```bash
 git clone https://github.com/davidfgarcia/public-cva-capstone
 cd public-cva-capstone
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r code/compliance_agent/requirements.txt -r code/tokenizer/requirements.txt pytest
 ```
+
+Everything below is run from this folder (the repository's top folder). The first `bash demo/run_demo.sh` creates
+a private Python environment in `.venv/` and installs the requirements into it (a minute or two); later runs start
+at once. To set it up by hand instead:
+`python3 -m venv .venv && .venv/bin/pip install -r code/compliance_agent/requirements.txt -r code/tokenizer/requirements.txt pytest`.
+The other demo commands below (`python demo/...`) then run as `.venv/bin/python demo/...`, or as plain `python`
+after `source .venv/bin/activate`.
 
 ## 2. Start it
 
