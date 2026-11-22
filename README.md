@@ -33,7 +33,7 @@ Per project, weekly or on demand:
 - **Wage updates:** new wage tables merged into the project's rates.
 - **AI review** of the judgment-type orange flags: retrieval over regulations, staff documents and past staff
   decisions, ranked with maximal marginal relevance (MMR); Claude suggests "keep the flag" or "likely fine" with
-  citations. It runs in shadow mode in production (measured, not shown); rules determine, the model only suggests.
+  citations. It runs in shadow mode in production (measured, not shown); rules flag, the model suggests, staff decide.
 
 ## Architecture
 
