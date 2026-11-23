@@ -1,4 +1,4 @@
-# Compliance Validation Agent (CVA): capstone copy
+# Compliance Validation Agent (CVA): capstone project public repository
 
 An agent that checks prevailing-wage compliance on publicly funded construction projects, built for a small
 compliance consulting firm in Washington State and submitted as the capstone project of the Carnegie Mellon
